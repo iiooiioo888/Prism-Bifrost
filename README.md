@@ -26,7 +26,7 @@ npm install
 npm run dev
 ```
 
-工作台開在 `http://127.0.0.1:5173`。開發權杖是檢視者 `dev-viewer`、分析師 `dev-analyst`、管理員 `dev-admin`，只供本地驗收。
+工作台開在 `http://127.0.0.1:5173`。介面根路徑 `GET /` 會回服務入口，文件在 `/docs`。開發權杖是檢視者 `dev-viewer`、分析師 `dev-analyst`、管理員 `dev-admin`，只供本地驗收，不要用在公開主機。
 
 ## 命令
 

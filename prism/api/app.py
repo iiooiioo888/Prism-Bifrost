@@ -103,6 +103,16 @@ def create_app(runtime: PrismRuntime | None = None) -> FastAPI:
     def runtime_of(request: Request) -> PrismRuntime:
         return request.app.state.runtime
 
+    @application.get("/")
+    def service_index() -> dict:
+        return {
+            "name": "稜鏡 Prism Bifröst",
+            "status": "ok",
+            "docs": "/docs",
+            "probes": "/api/v1/health/probes",
+            "proxies": "/api/v1/health/proxies",
+        }
+
     @application.get("/api/v1/health/probes")
     def probe_health(request: Request, principal: Principal = Depends(principal_from_request)) -> dict:
         require_role(principal, "viewer")
