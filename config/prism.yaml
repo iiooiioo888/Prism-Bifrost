@@ -125,3 +125,7 @@ herald:
 
 horn:
   channels: [workbench, im, email, webhook]
+
+# 平台官方介面。未開啟時不呼叫。憑證不寫在這個檔。
+official:
+  enabled: false

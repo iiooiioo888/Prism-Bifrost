@@ -86,7 +86,7 @@ def test_named_product_reads_public_prices_on_all_five_platforms(runtime):
         assert {offer.platform for offer in offers} == set(items)
         assert {f"{offer.list_price:.2f}" for offer in offers} == {price for _url, price in items.values()}
         assert {f"{offer.match_confidence:.3f}" for offer in offers} == {"0.250"}
-        assert len({offer.sku_id for offer in offers}) == 1
+        assert len({offer.sku_id for offer in offers}) == 5
         monitor = session.scalar(select(ProductMonitor).where(ProductMonitor.query == QUERY))
         assert monitor is not None
         assert monitor.sku_code == result["sku_code"]
@@ -215,3 +215,97 @@ def test_monitor_api(runtime, client):
         headers=analyst,
     )
     assert refused.status_code == 422
+
+
+SAME = "品牌：虎牌 型號：MMP-T 500ml 黑色 保溫杯"
+
+
+def test_same_identity_is_one_sku_and_a_different_spec_is_split(runtime):
+    items = _item_pages()
+    pages = {}
+    for market in MARKETPLACES:
+        href, price = items[market.platform_id]
+        title = SAME if market.platform_id != "jd" else "品牌：虎牌 型號：MMP-T 350ml 黑色 保溫杯"
+        pages[market.search_url(SAME)] = (200, _search([href]))
+        pages[href] = (200, _product(title, price))
+    runtime.listing_transport = _routes(pages, [])
+    result = asyncio.run(monitor_product(runtime, scene_id="double11", query=SAME))
+    jd = next(item for item in result["platforms"] if item["platform"] == "jd")
+    others = [item for item in result["platforms"] if item["platform"] != "jd"]
+    assert "分開" in jd["items"][0]["detail"]
+    assert {item["items"][0]["match_band"] for item in others} == {"high"}
+    assert len(result["recommendations"]) == 1
+    assert result["recommendations"][0]["abstain"]["executable"]
+    with session_scope(runtime.factory) as session:
+        offers = session.scalars(select(SkuOffer)).all()
+        high = [offer for offer in offers if f"{offer.match_confidence:.3f}" != "0.000"]
+        assert len({offer.sku_id for offer in high}) == 1
+        assert any(f"{offer.match_confidence:.3f}" == "0.000" for offer in offers)
+
+
+def test_daily_recheck_change_confirmation_and_drop_alert(runtime):
+    from datetime import datetime, timedelta, timezone
+
+    from prism.commerce.marketplaces import collect_listing
+    from prism.commerce.schedule import run_due
+    from prism.db.models import ListingWatch, PriceDropAlert, ProductMonitor
+
+    start = datetime(2026, 10, 21, tzinfo=timezone.utc)
+    pages = _search_pages()
+    seen: list[tuple[str, str | None]] = []
+    runtime.listing_transport = _routes(pages, seen)
+    asyncio.run(monitor_product(runtime, scene_id="double11", query=QUERY, now=start))
+    quiet = asyncio.run(run_due(runtime, now=start + timedelta(hours=2), scene_id="double11"))
+    assert quiet["ran"] == 0
+    jd_url, jd_price = _item_pages()["jd"]
+    pages[jd_url] = (200, _product(QUERY, "100.00"))
+    assert jd_price == "199.00"
+    due = asyncio.run(run_due(runtime, now=start + timedelta(days=1, minutes=1), scene_id="double11"))
+    assert due["ran"] == 1
+    assert due["results"][0]["alerts"]
+    assert due["results"][0]["alerts"][0]["previous_price"] == "199.00"
+    assert due["results"][0]["alerts"][0]["list_price"] == "100.00"
+    with session_scope(runtime.factory) as session:
+        assert session.scalar(select(func.count()).select_from(PriceDropAlert)) == 1
+        monitor = session.scalar(select(ProductMonitor).where(ProductMonitor.query == QUERY))
+        assert monitor is not None
+        assert monitor.confirm_at is not None
+    page = "https://item.jd.com/400.html"
+    runtime.listing_transport = _routes({page: (200, _product(QUERY, "199.00"))}, [])
+    listing = asyncio.run(collect_listing(runtime, scene_id="double11", url=page, now=start))
+    assert listing["schedules"] == ["on_demand", "daily", "on_change"]
+    with session_scope(runtime.factory) as session:
+        assert session.scalar(select(func.count()).select_from(ListingWatch)) == 1
+    held = asyncio.run(run_due(runtime, now=start + timedelta(hours=3), scene_id="double11"))
+    assert held["ran"] == 0
+
+
+def test_official_quote_is_unused_until_configured(runtime):
+    seen: list[str] = []
+
+    async def transport(url: str, proxy: str | None) -> tuple[int, bytes]:
+        seen.append(url)
+        if urlparse(url).path != "/robots.txt":
+            raise AssertionError(url)
+        return 200, b"User-agent: *\nDisallow: /\n"
+
+    runtime.listing_transport = transport
+    called = {"n": 0}
+
+    def quotes(query: str) -> list[dict[str, str]]:
+        called["n"] += 1
+        return [{"url": "https://item.jd.com/404.html", "title": SAME, "price": "88.00"}]
+
+    runtime.official_quotes = quotes
+    blocked = asyncio.run(monitor_product(runtime, scene_id="double11", query=SAME))
+    assert called["n"] == 0
+    assert blocked["official"]["configured"] is False
+    from dataclasses import replace
+
+    runtime.settings = replace(runtime.settings, official={"enabled": True})
+    saved = asyncio.run(monitor_product(runtime, scene_id="double11", query=SAME))
+    assert called["n"] == 1
+    assert saved["official"]["configured"] is True
+    jd = next(item for item in saved["platforms"] if item["platform"] == "jd")
+    assert jd["items"][0]["list_price"] == "88.00"
+    assert not any("item.jd.com" in url and not url.endswith("/robots.txt") for url in seen)

@@ -14,6 +14,7 @@ from prism.db.session import session_scope
 from prism.commerce.images import ProductImageService
 from prism.commerce.marketplaces import ListingError, collect_listing, marketplace_catalog
 from prism.commerce.monitor import monitor_product
+from prism.commerce.schedule import run_due
 from prism.commerce.service import CommerceError, CommerceService
 from prism.raven.compliance import ComplianceError
 from prism.raven.images import ImageCrawlError
@@ -356,6 +357,16 @@ def scene_monitor(
         prices = [item["list_price"] for item in platform["items"] if item.get("list_price")]
         shown = "、".join(prices) if prices else platform["status"]
         typer.echo(f"{platform['label']}  {shown}  {platform['detail']}")
+
+
+@scene_app.command("due")
+def scene_due(scene: str = typer.Option("double11", "--scene", help="商品場景")) -> None:
+    """跑已經到期的商品監測：每天一次，以及標價變動後的再查。"""
+    runtime = _runtime()
+    result = asyncio.run(run_due(runtime, scene_id=scene))
+    typer.echo(f"已跑 {result['ran']} 次")
+    for item in result["results"]:
+        typer.echo(item.get("query") or item.get("source_url") or item.get("detail"))
 
 
 @scene_app.command("listing")

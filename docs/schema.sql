@@ -342,6 +342,8 @@ CREATE TABLE product_monitor (
   scene_id    TEXT NOT NULL,
   query       TEXT NOT NULL,
   sku_code    TEXT NOT NULL,
+  next_daily_at TIMESTAMPTZ,
+  confirm_at  TIMESTAMPTZ,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (scene_id, query)
@@ -357,7 +359,33 @@ CREATE TABLE product_monitor_hit (
   source_url   TEXT,
   title        TEXT,
   list_price   TEXT,
+  sku_code     TEXT,
+  match_confidence TEXT,
+  match_band   TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE listing_watch (
+  watch_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  scene_id      TEXT NOT NULL,
+  source_url    TEXT NOT NULL,
+  sku_code      TEXT NOT NULL,
+  title         TEXT NOT NULL DEFAULT '',
+  next_daily_at TIMESTAMPTZ,
+  confirm_at    TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (scene_id, source_url)
+);
+
+CREATE TABLE price_drop_alert (
+  alert_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  scene_id       TEXT NOT NULL,
+  sku_code       TEXT NOT NULL,
+  source_url     TEXT NOT NULL,
+  previous_price TEXT NOT NULL,
+  list_price     TEXT NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- 研判：規則引擎與排序結果。不引用 canonical_event。

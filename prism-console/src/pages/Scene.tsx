@@ -33,7 +33,7 @@ export function ScenePage() {
     <section>
       <h2 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>商品</h2>
       <p style={{ color: "var(--muted)" }}>
-        輸入一種商品後，到天貓、淘寶、拼多多、京東、轉轉讀公開標價。結果寫入 SKU 報價，不建立規範事件。
+        輸入一種商品後，到天貓、淘寶、拼多多、京東、轉轉讀公開標價。品牌、型號、容量或顏色不同會分開。手動查一次、每天重查，標價變動後再查一次。只有頁面標價下降才告警。
       </p>
       <article className="panel">
         <h3 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>商品平台</h3>
@@ -80,6 +80,13 @@ export function ScenePage() {
         {report && (
           <div style={{ marginTop: 12 }}>
             <p>{report.detail}</p>
+            {report.official && <p style={{ color: "var(--muted)" }}>{report.official.detail}</p>}
+            {report.alerts?.map((alert) => (
+              <p key={alert.source_url} className="error">{alert.detail} {alert.previous_price} → {alert.list_price}</p>
+            ))}
+            {report.recommendations?.flatMap((item) => item.abstain?.executable ?? []).slice(0, 3).map((item) => (
+              <p key={item.statement}>{item.statement} 待人工確認。</p>
+            ))}
             <table>
               <thead>
                 <tr><th>平台</th><th>狀態</th><th>標價</th><th>說明</th></tr>
@@ -90,7 +97,10 @@ export function ScenePage() {
                     <td>{platform.label}</td>
                     <td>{platform.status === "priced" ? "已記錄" : platform.status === "withheld" ? "未寫入標價" : platform.status === "blocked" ? "已停止" : "沒有公開連結"}</td>
                     <td>{platform.items.map((item) => item.list_price).filter(Boolean).join("、") || "—"}</td>
-                    <td>{platform.items[0]?.title || platform.detail}</td>
+                    <td>
+                      {platform.items[0]?.title || platform.detail}
+                      {platform.items[0]?.match_band ? `（${platform.items[0].match_band === "high" ? "高檔" : platform.items[0].match_band === "medium" ? "中檔" : "低檔"}）` : ""}
+                    </td>
                   </tr>
                 ))}
               </tbody>

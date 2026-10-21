@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from prism.api.deps import Principal, principal_from_request, require_role
 from prism.commerce.marketplaces import ListingError, collect_listing, marketplace_catalog
 from prism.commerce.monitor import monitor_product
+from prism.commerce.schedule import run_due
 from prism.commerce.service import CommerceError, CommerceService
 from prism.raven.compliance import ComplianceError as FetchComplianceError
 from prism.raven.proxies import AccessDenied, ProxyPoolExhausted
@@ -28,7 +29,7 @@ class ListingBody(BaseModel):
 
 
 class MonitorBody(BaseModel):
-    query: str = Field(min_length=1, max_length=40)
+    query: str = Field(min_length=1, max_length=80)
 
 
 def register_scene_routes(application: FastAPI) -> None:
@@ -58,6 +59,17 @@ def register_scene_routes(application: FastAPI) -> None:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except ProxyPoolExhausted as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @application.post("/api/v1/scenes/{scene_id}/watches/run")
+    def run_watches(
+        scene_id: str,
+        request: Request,
+        principal: Principal = Depends(principal_from_request),
+    ) -> dict:
+        require_role(principal, "analyst")
+        if scene_id not in runtime_of(request).settings.scenes:
+            raise HTTPException(status_code=404, detail="沒有這個場景")
+        return asyncio.run(run_due(runtime_of(request), scene_id=scene_id))
 
     @application.post("/api/v1/scenes/{scene_id}/listings")
     def create_listing(

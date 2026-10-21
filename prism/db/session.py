@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -40,11 +40,22 @@ def make_engine(database_url: str) -> Engine:
     return engine
 
 
+_SQLITE_ADDED_COLUMNS = {
+    "product_monitor": ("next_daily_at", "confirm_at"),
+    "product_monitor_hit": ("sku_code", "match_confidence", "match_band"),
+}
+
+
 def init_db(engine: Engine) -> None:
     Base.metadata.create_all(engine)
     if engine.dialect.name == "sqlite":
         with engine.begin() as connection:
             connection.connection.executescript(_SQLITE_AUDIT_TRIGGER)
+            for table, columns in _SQLITE_ADDED_COLUMNS.items():
+                present = {row[1] for row in connection.execute(text(f"PRAGMA table_info({table})"))}
+                for column in columns:
+                    if column not in present:
+                        connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} TEXT"))
 
 
 @contextmanager

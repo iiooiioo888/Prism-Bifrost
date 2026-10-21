@@ -218,6 +218,17 @@ export interface MonitorItem {
   list_price: string | null;
   status: "priced" | "withheld" | "blocked" | "empty";
   detail: string;
+  sku_code?: string | null;
+  match_confidence?: string | null;
+  match_band?: "high" | "medium" | "low" | null;
+}
+
+export interface PriceDropNotice {
+  sku_code: string;
+  source_url: string;
+  previous_price: string;
+  list_price: string;
+  detail: string;
 }
 
 export interface MonitorPlatform {
@@ -237,6 +248,10 @@ export interface ProductMonitorReport {
   match_confidence: string;
   event_created: boolean;
   detail: string;
+  schedules?: string[];
+  official?: { configured: boolean; detail: string };
+  alerts?: PriceDropNotice[];
+  recommendations?: Array<{ label?: string; abstain?: { executable?: Array<{ statement: string }> } }>;
   platforms: MonitorPlatform[];
 }
 

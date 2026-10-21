@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, quote, urljoin, urlparse, urlunparse
 
 from sqlalchemy import func, select
 
-from prism.commerce.money import money, money_text
+from prism.commerce.money import money, money_text, score_text
 from prism.commerce.service import CommerceError, CommerceService
 from prism.db.models import CanonicalEvent, EventMention
 from prism.db.session import session_scope
@@ -201,6 +201,9 @@ def store_listing(
     attempts: tuple[ProxyAttempt, ...],
     sku_code: str | None = None,
     sku_title: str | None = None,
+    match_confidence: Decimal | None = None,
+    page_list_price_dropped: bool = False,
+    protection_cause: str = "unparsed",
 ) -> dict[str, Any]:
     scene = runtime.settings.scenes.get(scene_id)
     if scene is None or scene.fusion != "sku_offer":
@@ -208,6 +211,7 @@ def store_listing(
     before_events, before_mentions = _event_counts(runtime)
     collected = datetime.now(timezone.utc)
     code = sku_code or f"{platform.platform_id}:{item_id}"
+    confidence = Decimal("0.25") if match_confidence is None else match_confidence
     service = CommerceService(runtime)
     offer_id = service.record_offer(
         sku_code=code,
@@ -220,9 +224,9 @@ def store_listing(
         acquisition_mode="live",
         list_price=product.list_price,
         price_basis=product.price_basis,
-        match_confidence=Decimal("0.25"),
-        page_list_price_dropped=False,
-        protection_cause="unparsed",
+        match_confidence=confidence,
+        page_list_price_dropped=page_list_price_dropped,
+        protection_cause=protection_cause,
         inventory_reliability=Decimal("0"),
         after_sales=Decimal("0"),
         adjustments=[],
@@ -249,7 +253,7 @@ def store_listing(
         "source_url": url,
         "list_price": None if product.list_price is None else money_text(product.list_price),
         "price_basis": product.price_basis,
-        "match_confidence": "0.250",
+        "match_confidence": score_text(confidence),
         "stored": True,
         "event_created": False,
         "detail": product.detail,
@@ -262,7 +266,10 @@ async def collect_listing(
     scene_id: str,
     url: str,
     transport: BytesTransport | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
+    from prism.commerce.schedule import previous_list_price, register_listing, remember_drop
+
     scene = runtime.settings.scenes.get(scene_id)
     if scene is None or scene.fusion != "sku_offer":
         raise CommerceError("這個場景不是商品監測")
@@ -277,15 +284,47 @@ async def collect_listing(
     except (ListingError, ComplianceError, AccessDenied, ProxyPoolExhausted) as exc:
         _record_attempts(runtime, url, tuple(getattr(exc, "attempts", ()) or ()))
         raise
-    return store_listing(
+    moment = now or datetime.now(timezone.utc)
+    page = url.strip()
+    code = f"{platform.platform_id}:{item_id}"
+    previous = previous_list_price(runtime, code, page)
+    dropped = previous is not None and product.list_price is not None and product.list_price < previous
+    stored = store_listing(
         runtime,
         scene_id=scene_id,
-        url=url.strip(),
+        url=page,
         platform=platform,
         item_id=item_id,
         product=product,
         attempts=attempts,
+        page_list_price_dropped=dropped,
+        protection_cause="page_list_price" if dropped else "unparsed",
     )
+    alerts = []
+    if dropped and previous is not None and product.list_price is not None:
+        alerts.append(
+            remember_drop(
+                runtime,
+                scene_id=scene_id,
+                sku_code=code,
+                source_url=page,
+                previous=previous,
+                current=product.list_price,
+                now=moment,
+            )
+        )
+    register_listing(
+        runtime,
+        scene_id=scene_id,
+        source_url=page,
+        sku_code=stored["sku_code"],
+        title=stored["title"],
+        now=moment,
+        confirm=dropped,
+    )
+    stored["alerts"] = alerts
+    stored["schedules"] = ["on_demand", "daily", "on_change"]
+    return stored
 
 
 def _item_id(platform_id: str, parsed: Any) -> str | None:

@@ -47,11 +47,12 @@ prism horn test
 prism scene list
 prism scene platforms
 prism scene monitor --query 保溫杯
+prism scene due
 prism scene listing --url https://item.jd.com/400.html
 prism scene decide --sku DEMO-SKU-01 --node onsale
 ```
 
-`prism horn test` 只做乾跑，不會向外部網址送出。`prism scene decide` 的金額只來自規則引擎，登入態價格不會被採集。`prism raven images` 只抓允許網域上標成商品圖的公開檔，不跟隨重新導向，目標拒絕時不換 IP。`prism scene monitor` 依商品名稱到天貓、淘寶、拼多多、京東、轉轉讀公開標價，寫入 SKU 報價，不建立規範事件。搜尋頁被 robots.txt 禁止或無法確認時，該平台停止，不寫標價。`prism scene listing` 只讀這五個平台的單一商品頁。
+`prism horn test` 只做乾跑，不會向外部網址送出。`prism scene decide` 的金額只來自規則引擎，登入態價格不會被採集。`prism raven images` 只抓允許網域上標成商品圖的公開檔，不跟隨重新導向，目標拒絕時不換 IP。`prism scene monitor` 依商品名稱到天貓、淘寶、拼多多、京東、轉轉讀公開標價。品牌、型號、容量或顏色不同會分開，低檔匹配只記入標價表。`prism scene due` 補跑每天以及標價變動後的再查。搜尋頁被 robots.txt 禁止或無法確認時，該平台停止。`prism scene listing` 讀取這五個平台的單一商品頁，並排入後續再查。
 
 ## 測試
 

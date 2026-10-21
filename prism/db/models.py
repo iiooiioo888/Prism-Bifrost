@@ -453,6 +453,8 @@ class ProductMonitor(Base):
     scene_id: Mapped[str] = mapped_column(Text, nullable=False)
     query: Mapped[str] = mapped_column(Text, nullable=False)
     sku_code: Mapped[str] = mapped_column(Text, nullable=False)
+    next_daily_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    confirm_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -477,6 +479,40 @@ class ProductMonitorHit(Base):
     source_url: Mapped[str | None] = mapped_column(Text)
     title: Mapped[str | None] = mapped_column(Text)
     list_price: Mapped[str | None] = mapped_column(Text)
+    sku_code: Mapped[str | None] = mapped_column(Text)
+    match_confidence: Mapped[str | None] = mapped_column(Text)
+    match_band: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ListingWatch(Base):
+    """使用者貼上的商品頁。手動讀過之後，每天以及標價變動後再讀。"""
+
+    __tablename__ = "listing_watch"
+    __table_args__ = (UniqueConstraint("scene_id", "source_url", name="uq_listing_watch_url"),)
+
+    watch_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    scene_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    sku_code: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    next_daily_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    confirm_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PriceDropAlert(Base):
+    """只在頁面標價下降時留下。不因補貼、券或紅包告警。"""
+
+    __tablename__ = "price_drop_alert"
+
+    alert_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    scene_id: Mapped[str] = mapped_column(Text, nullable=False)
+    sku_code: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    previous_price: Mapped[str] = mapped_column(Text, nullable=False)
+    list_price: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
