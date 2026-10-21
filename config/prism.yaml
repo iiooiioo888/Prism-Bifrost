@@ -1,0 +1,127 @@
+# 稜鏡（Prism Bifröst）核心配置
+# 開發環境權杖僅供本地驗收，正式環境改由密鑰管理注入，不得沿用此檔。
+app:
+  env: dev
+  timezone: Asia/Shanghai
+  database_url: sqlite:///var/prism.db
+  object_store: var/objects
+  auth_required: true
+
+auth:
+  tokens:
+    - token: dev-viewer
+      role: viewer
+      actor: 檢視者
+    - token: dev-analyst
+      role: analyst
+      actor: 分析師
+    - token: dev-admin
+      role: admin
+      actor: 管理員
+
+raven:
+  probes:
+    rss:
+      enabled: true
+      schedule: "*/15 * * * *"
+      source_type: web
+    jina_reader:
+      enabled: true
+      source_type: web
+    exa_search:
+      enabled: false
+      source_type: web
+      requires: [EXA_API_KEY]
+    reddit:
+      enabled: false
+      source_type: social
+      requires: [opencli]
+      locked_reason: 第二階段按需解鎖，且必須登記登入態維護責任人
+
+bridge:
+  dedup:
+    url_bloom_size: 10000000
+    near_dup_threshold: 0.95
+  rate_limit:
+    per_domain_per_second: 1
+    per_probe_concurrency: 2
+  retry:
+    max_attempts: 3
+    backoff_seconds: 0.5
+  retention:
+    raw_response_days: 180
+    ingest_log_days: 90
+  feeds:
+    - id: demo-harbor
+      path: fixtures/feeds/harbor.xml
+      platform: rss
+      source_type: web
+      probe_id: rss-demo
+
+weave:
+  merge:
+    auto_threshold: 0.85
+    review_threshold: 0.65
+    # 語義「命中」初值。說明書要求以金標準校準，此值不是已校準結論。
+    semantic_hit_threshold: 0.60
+    title_rule_threshold: 0.80
+    author_window_hours: 6
+  entity:
+    # 向量相似度進入人工佇列的初值，同上，須金標準校準。
+    review_threshold: 0.72
+
+watch:
+  calibration:
+    abstain_threshold: 0.35
+    fallback_penalty: 0.90
+    # 第一階段貝氏更新尚未引入，乘數恆為 1。
+    bayesian_factor: 1.0
+    bands:
+      academic: [0.65, 0.92]
+      corpus: [0.65, 0.92]
+      registry: [0.65, 0.92]
+      web: [0.52, 0.68]
+      social: [0.40, 0.57]
+      video: [0.37, 0.60]
+      code: [0.37, 0.60]
+      # 說明書第二層給了新聞乘數，第一層未單列頻寬。預設沿用網頁頻寬，乘數仍用新聞。
+      news: [0.52, 0.68]
+      # 市場訊號同樣只有乘數。預設沿用社群頻寬，取保守側，可在金標準後改。
+      market: [0.40, 0.57]
+    multipliers:
+      corpus: 0.90
+      registry: 0.90
+      academic: 0.88
+      web: 0.72
+      social: 0.72
+      news: 0.68
+      video: 0.65
+      code: 0.65
+      market: 0.60
+  burst:
+    z_threshold: 3.0
+    baseline_days: 7
+    eps: 0.000001
+    # 歸一化：達到突發閾值即給滿權重，超過不再放大。
+    norm_divisor: 3.0
+  priority:
+    weights: [0.20, 0.25, 0.20, 0.20, 0.10, 0.05]
+    alert_threshold: 0.75
+
+llm:
+  gateway: openai-compatible
+  model_merge: qwen2.5-7b-instruct
+  model_brief: gpt-4o
+  max_retries: 1
+  cache_ttl_hours: 24
+  per_worker_per_minute: 30
+  budget:
+    daily_tokens: 2000000
+
+herald:
+  default_period: day
+  model_assisted_label: 模型輔助，待人工確認
+  human_baseline_label: 待人工確認
+
+horn:
+  channels: [workbench, im, email, webhook]

@@ -1,0 +1,34 @@
+# 探針路由。第一階段只啟用零配置通道。
+# 社群與需登入態的後端保持關閉，不在此實作登入偽造或驗證碼繞過。
+probes:
+  rss:
+    backends:
+      - id: feedparser
+        priority: 1
+    health_check_interval: 300
+  jina_reader:
+    backends:
+      - id: jina-public
+        priority: 1
+    health_check_interval: 300
+  exa_search:
+    backends:
+      - id: exa-api
+        priority: 1
+    health_check_interval: 300
+  bilibili:
+    backends:
+      - id: bili-cli
+        priority: 1
+      - id: yt-dlp
+        priority: 2
+    health_check_interval: 300
+    enabled: false
+  reddit:
+    backends:
+      - id: opencli
+        priority: 1
+      - id: rdt-cli
+        priority: 2
+    health_check_interval: 300
+    enabled: false

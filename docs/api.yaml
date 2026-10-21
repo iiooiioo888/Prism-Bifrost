@@ -1,0 +1,183 @@
+openapi: 3.1.0
+info:
+  title: 稜鏡 Prism Bifröst
+  version: 1.0.0
+servers:
+  - url: /api/v1
+paths:
+  /events:
+    get:
+      summary: 事件列表
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [active, stale, merged, split] }
+        - in: query
+          name: min_priority
+          schema: { type: number }
+        - in: query
+          name: entity
+          schema: { type: string }
+        - in: query
+          name: abstain
+          schema: { type: boolean }
+      responses:
+        "200": { description: 事件摘要列表 }
+  /events/{event_id}:
+    get:
+      summary: 事件詳情
+      parameters:
+        - in: path
+          name: event_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 提及、指標、實體與建議 }
+  /events/{event_id}/mentions:
+    get:
+      summary: 事件提及
+      parameters:
+        - in: path
+          name: event_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 提及列表 }
+  /events/{event_id}/metrics:
+    get:
+      summary: 事件指標
+      parameters:
+        - in: path
+          name: event_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 確定性指標 }
+  /events/{event_id}/merge:
+    post:
+      summary: 把來源事件歸併進路徑上的事件
+      parameters:
+        - in: path
+          name: event_id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Confirm
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_event_id]
+              properties:
+                source_event_id: { type: string }
+                reason: { type: string }
+      responses:
+        "200": { description: 已歸併 }
+  /events/{event_id}/split:
+    post:
+      summary: 拆分提及到新事件
+      parameters:
+        - in: path
+          name: event_id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Confirm
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 已拆分 }
+  /events/{event_id}/promote:
+    post:
+      summary: 將棄權事件提升回研判
+      responses:
+        "200": { description: 已提升 }
+  /mentions/{mention_id}/label:
+    post:
+      summary: 標註提及，不改寫所屬事件
+      parameters:
+        - in: path
+          name: mention_id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label]
+              properties:
+                label: { type: string, enum: [confirm, exclude, uncertain] }
+                note: { type: string }
+      responses:
+        "200": { description: 已標註 }
+  /alerts:
+    get:
+      summary: 告警佇列
+      parameters:
+        - in: query
+          name: since
+          schema: { type: string, format: date-time }
+      responses:
+        "200": { description: 含觸發規則與原始網址 }
+  /briefs:
+    get:
+      summary: 簡報列表
+      responses:
+        "200": { description: 簡報快照 }
+    post:
+      summary: 生成簡報
+      responses:
+        "200": { description: 新簡報 }
+  /briefs/{brief_id}:
+    get:
+      summary: 簡報快照
+      parameters:
+        - in: path
+          name: brief_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 簡報 }
+  /health/probes:
+    get:
+      summary: 探針健康度
+      responses:
+        "200": { description: 含降級與未啟用通道 }
+  /review/queue:
+    get:
+      summary: 待複核歸併建議
+      responses:
+        "200": { description: 中置信佇列 }
+  /review/suggestions/{suggestion_id}/accept:
+    post:
+      summary: 採納歸併建議
+      responses:
+        "200": { description: 事實層已更新 }
+  /review/suggestions/{suggestion_id}/reject:
+    post:
+      summary: 拒絕歸併建議
+      responses:
+        "200": { description: 事實層未改寫 }
+  /dashboard:
+    get:
+      summary: 態勢面板讀模型
+      responses:
+        "200": { description: 時間序列、排序與健康度 }
+  /compliance/erasure:
+    post:
+      summary: 依網址或作者刪除提及並保留審計
+      responses:
+        "200": { description: 已刪除的提及識別 }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+security:
+  - bearer: []
