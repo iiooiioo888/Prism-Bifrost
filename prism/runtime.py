@@ -14,11 +14,12 @@ from prism.bridge.ingest import IngestReport, IngestService
 from prism.clock import ensure_utc
 from prism.bridge.objects import ObjectStore
 from prism.config import Settings, load_settings
-from prism.db.models import ProbeFailure, ProbeHealthRow, ProbeRun
+from prism.db.models import ProbeFailure, ProbeHealthRow, ProbeRun, ProxyRun
 from prism.db.session import init_db, make_engine, session_factory, session_scope
 from prism.raven.base import RawItem
 from prism.raven.compliance import SitePolicy
 from prism.raven.degrade import failure_acceleration, should_preempt_fallback
+from prism.raven.proxies import proxy_rows
 from prism.raven.health import classify_health
 from prism.watch.service import WatchService
 from prism.weave.merge import Assignment, MergeEngine
@@ -198,6 +199,42 @@ class PrismRuntime:
                 }
             )
         return payload
+
+    def record_proxy(
+        self,
+        *,
+        proxy_id: str,
+        target_url: str,
+        outcome: str,
+        status_code: int | None,
+        detail: str,
+        now: datetime | None = None,
+    ) -> None:
+        moment = now or datetime.now(timezone.utc)
+        with session_scope(self.factory) as session:
+            session.add(
+                ProxyRun(
+                    proxy_id=proxy_id,
+                    target_url=target_url,
+                    outcome=outcome,
+                    status_code=status_code,
+                    detail=detail,
+                    created_at=moment,
+                )
+            )
+
+    def configured_proxy_status(self) -> dict:
+        pool = self.settings.proxies
+        with session_scope(self.factory) as session:
+            runs = session.scalars(select(ProxyRun).order_by(ProxyRun.created_at.asc(), ProxyRun.run_id.asc())).all()
+        grouped: dict[str, list[tuple[str, datetime | None]]] = {}
+        for run in runs:
+            grouped.setdefault(run.proxy_id, []).append((run.outcome, ensure_utc(run.created_at) if run.created_at else None))
+        return {
+            "enabled": pool.enabled,
+            "retry_on_access_denied": pool.retry_on_access_denied,
+            "items": proxy_rows(pool, grouped),
+        }
 
 
 def _degradation_fields(success_flags: list[bool]) -> dict:

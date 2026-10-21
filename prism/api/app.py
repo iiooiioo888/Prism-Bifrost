@@ -107,6 +107,11 @@ def create_app(runtime: PrismRuntime | None = None) -> FastAPI:
         require_role(principal, "viewer")
         return {"items": runtime_of(request).configured_probe_status()}
 
+    @application.get("/api/v1/health/proxies")
+    def proxy_health(request: Request, principal: Principal = Depends(principal_from_request)) -> dict:
+        require_role(principal, "viewer")
+        return runtime_of(request).configured_proxy_status()
+
     @application.get("/api/v1/events")
     def list_events(
         request: Request,

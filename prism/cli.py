@@ -80,6 +80,26 @@ def raven_status() -> None:
     _print_table(["探針", "狀態", "備選比例", "連續失敗", "最近成功", "說明", "劣化", "提前備選"], rows)
 
 
+@raven_app.command("proxies")
+def raven_proxies() -> None:
+    """出口代理池。目標拒絕時不會改用其他 IP。"""
+    runtime = _runtime()
+    status = runtime.configured_proxy_status()
+    typer.echo(f"代理池啟用：{'是' if status['enabled'] else '否'}，拒絕後換 IP：否")
+    rows = []
+    for item in status["items"]:
+        rows.append(
+            [
+                item["proxy_id"],
+                item["status"],
+                str(item["consecutive_transport_failures"]),
+                item["last_outcome"] or "—",
+                item["detail"],
+            ]
+        )
+    _print_table(["代理", "狀態", "連續傳輸失敗", "最近結果", "說明"], rows)
+
+
 @raven_app.command("probe")
 def raven_probe(platform: str) -> None:
     """單次探針測試。"""

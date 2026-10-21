@@ -401,6 +401,26 @@ class PriceObservation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class ProxyRun(Base):
+    """出口嘗試。目標拒絕與傳輸失敗分開記，拒絕不會被換 IP 洗掉。"""
+
+    __tablename__ = "proxy_run"
+    __table_args__ = (
+        CheckConstraint(
+            "outcome IN ('success','transport_failure','access_denied')",
+            name="ck_proxy_outcome",
+        ),
+    )
+
+    run_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    proxy_id: Mapped[str] = mapped_column(Text, nullable=False)
+    target_url: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    detail: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class PriceDecision(Base):
     """研判層。不引用 canonical_event，也不回寫報價事實。"""
 

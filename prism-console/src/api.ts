@@ -53,6 +53,7 @@ export const api = {
   metrics: (id: string) => request<{ items: Metric[] }>(`/api/v1/events/${id}/metrics`),
   alerts: () => request<{ items: Alert[] }>("/api/v1/alerts"),
   probes: () => request<{ items: ProbeHealth[] }>("/api/v1/health/probes"),
+  proxies: () => request<ProxyPoolStatus>("/api/v1/health/proxies"),
   scenes: () => request<{ items: SceneConfig[] }>("/api/v1/scenes"),
   sceneDecisions: (sceneId: string) => request<{ items: SceneDecision[] }>(`/api/v1/scenes/${sceneId}/decisions`),
   dashboard: () => request<Dashboard>("/api/v1/dashboard"),
@@ -157,6 +158,23 @@ export interface Alert {
   signal_urls: string[];
   summary: string;
   created_at: string;
+}
+
+export interface ProxyEndpointStatus {
+  proxy_id: string;
+  url: string;
+  enabled: boolean;
+  status: "healthy" | "degraded" | "down";
+  detail: string;
+  consecutive_transport_failures: number;
+  last_outcome: string | null;
+  last_success_at: string | null;
+}
+
+export interface ProxyPoolStatus {
+  enabled: boolean;
+  retry_on_access_denied: boolean;
+  items: ProxyEndpointStatus[];
 }
 
 export interface ProbeHealth {

@@ -309,6 +309,17 @@ CREATE TABLE price_observation (
   UNIQUE (sku_id, observed_on, source_url)
 );
 
+-- 出口嘗試。access_denied 表示目標拒絕，系統不得改用其他 IP 再試同一請求。
+CREATE TABLE proxy_run (
+  run_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  proxy_id     TEXT NOT NULL,
+  target_url   TEXT NOT NULL,
+  outcome      TEXT NOT NULL CHECK (outcome IN ('success','transport_failure','access_denied')),
+  status_code  INTEGER,
+  detail       TEXT NOT NULL DEFAULT '',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 研判：規則引擎與排序結果。不引用 canonical_event。
 CREATE TABLE price_decision (
   decision_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),

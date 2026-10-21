@@ -32,6 +32,7 @@ npm run dev
 
 ```bash
 prism raven status
+prism raven proxies
 prism raven probe rss
 prism bridge ingest --feed demo-harbor
 prism weave event list

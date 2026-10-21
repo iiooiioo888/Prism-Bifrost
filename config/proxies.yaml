@@ -1,0 +1,11 @@
+# 出口代理池。憑證不要寫進這個檔。
+# 只在出口本身傳輸失敗時改用下一條。
+# 目標拒絕、驗證碼或頻率限制時必須停止，不得把 retry_on_access_denied 設為 true。
+enabled: false
+retry_on_access_denied: false
+transport_failure_limit: 3
+proxies:
+  - id: local-a
+    url: http://127.0.0.1:8888
+  - id: local-b
+    url: http://127.0.0.1:8889

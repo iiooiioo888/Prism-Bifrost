@@ -10,6 +10,7 @@ from typing import Any
 
 import yaml
 
+from prism.raven.proxies import ProxyPoolConfig, load_proxy_pool
 from prism.scenes.registry import Scene, load_scenes
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +41,7 @@ class Settings:
     raven_routes: dict[str, Any]
     site_rules: dict[str, Any]
     scenes: dict[str, Scene]
+    proxies: ProxyPoolConfig
 
     @property
     def timezone(self) -> str:
@@ -94,6 +96,7 @@ def load_settings(config_path: Path | None = None) -> Settings:
         raven_routes=_load_yaml(config_dir / "raven.yaml"),
         site_rules=_load_yaml(config_dir / "site_rules.yaml"),
         scenes=load_scenes(_load_yaml(config_dir / "scenes.yaml")),
+        proxies=load_proxy_pool(_load_yaml(config_dir / "proxies.yaml")),
     )
 
 

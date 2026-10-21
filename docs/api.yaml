@@ -150,6 +150,12 @@ paths:
       responses:
         "200":
           description: 含降級、未啟用通道、劣化速率與是否提前備選
+  /health/proxies:
+    get:
+      summary: 出口代理池
+      responses:
+        "200":
+          description: 代理啟用狀態。拒絕後不換 IP
   /scenes:
     get:
       summary: 場景配置
