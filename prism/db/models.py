@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -339,5 +340,118 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(Text, nullable=False)
     target_type: Mapped[str] = mapped_column(Text, nullable=False)
     target_id: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Sku(Base):
+    """決策對象。同一 SKU 的各平台頁面不是同一規範事件的多條提及。"""
+
+    __tablename__ = "sku"
+    __table_args__ = (UniqueConstraint("code", name="uq_sku_code"),)
+
+    sku_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    code: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    scene_id: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SkuOffer(Base):
+    """頁面可觀察的標價與優惠原文。求解後的實付不寫在這張表。"""
+
+    __tablename__ = "sku_offer"
+    __table_args__ = (
+        CheckConstraint("price_basis IN ('guest','logged_in')", name="ck_offer_basis"),
+        CheckConstraint("acquisition_mode IN ('live','fallback')", name="ck_offer_mode"),
+    )
+
+    offer_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    sku_id: Mapped[str] = mapped_column(ForeignKey("sku.sku_id"), nullable=False)
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    upstream_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    acquisition_mode: Mapped[str] = mapped_column(Text, nullable=False)
+    list_price: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    price_basis: Mapped[str] = mapped_column(Text, nullable=False)
+    match_confidence: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False)
+    page_list_price_dropped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    protection_cause: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    inventory_reliability: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False)
+    after_sales: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False)
+    adjustments: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    valid_until: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PriceObservation(Base):
+    """慢速路徑累積的歷史標價。天數不足時決策必須標註置信度降低。"""
+
+    __tablename__ = "price_observation"
+    __table_args__ = (
+        UniqueConstraint("sku_id", "observed_on", "source_url", name="uq_price_observation"),
+    )
+
+    observation_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    sku_id: Mapped[str] = mapped_column(ForeignKey("sku.sku_id"), nullable=False)
+    observed_on: Mapped[date] = mapped_column(Date, nullable=False)
+    list_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ProductImage(Base):
+    """公開商品圖。只掛在 SKU 上，不建立規範事件，也不從圖裡讀價格。"""
+
+    __tablename__ = "product_image"
+    __table_args__ = (
+        UniqueConstraint("sku_id", "image_url", name="uq_product_image_url"),
+        CheckConstraint("acquisition_mode IN ('live','fallback')", name="ck_product_image_mode"),
+    )
+
+    image_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    sku_id: Mapped[str] = mapped_column(ForeignKey("sku.sku_id"), nullable=False)
+    source_page_url: Mapped[str] = mapped_column(Text, nullable=False)
+    image_url: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str] = mapped_column(Text, nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    object_key: Mapped[str] = mapped_column(Text, nullable=False)
+    acquisition_mode: Mapped[str] = mapped_column(Text, nullable=False)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ProxyRun(Base):
+    """出口嘗試。目標拒絕與傳輸失敗分開記，拒絕不會被換 IP 洗掉。"""
+
+    __tablename__ = "proxy_run"
+    __table_args__ = (
+        CheckConstraint(
+            "outcome IN ('success','transport_failure','access_denied')",
+            name="ck_proxy_outcome",
+        ),
+    )
+
+    run_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    proxy_id: Mapped[str] = mapped_column(Text, nullable=False)
+    target_url: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    detail: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PriceDecision(Base):
+    """研判層。不引用 canonical_event，也不回寫報價事實。"""
+
+    __tablename__ = "price_decision"
+
+    decision_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    sku_id: Mapped[str] = mapped_column(ForeignKey("sku.sku_id"), nullable=False)
+    scene_id: Mapped[str] = mapped_column(Text, nullable=False)
+    node: Mapped[str] = mapped_column(Text, nullable=False)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

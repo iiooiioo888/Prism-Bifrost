@@ -53,6 +53,20 @@ export const api = {
   metrics: (id: string) => request<{ items: Metric[] }>(`/api/v1/events/${id}/metrics`),
   alerts: () => request<{ items: Alert[] }>("/api/v1/alerts"),
   probes: () => request<{ items: ProbeHealth[] }>("/api/v1/health/probes"),
+  proxies: () => request<ProxyPoolStatus>("/api/v1/health/proxies"),
+  scenes: () => request<{ items: SceneConfig[] }>("/api/v1/scenes"),
+  sceneDecisions: (sceneId: string) => request<{ items: SceneDecision[] }>(`/api/v1/scenes/${sceneId}/decisions`),
+  productImages: (sceneId: string, skuCode: string) =>
+    request<{ sku_code: string; items: ProductImage[] }>(
+      `/api/v1/scenes/${sceneId}/images?sku_code=${encodeURIComponent(skuCode)}`,
+    ),
+  productImageBlob: async (imageId: string) => {
+    const headers = new Headers();
+    headers.set("Authorization", `Bearer ${TOKENS[currentRole()]}`);
+    const response = await fetch(`/api/v1/product-images/${imageId}`, { headers });
+    if (!response.ok) throw new ApiError(response.status, response.statusText);
+    return response.blob();
+  },
   dashboard: () => request<Dashboard>("/api/v1/dashboard"),
   briefs: () => request<{ items: Brief[] }>("/api/v1/briefs"),
   brief: (id: string) => request<Brief>(`/api/v1/briefs/${id}`),
@@ -157,6 +171,23 @@ export interface Alert {
   created_at: string;
 }
 
+export interface ProxyEndpointStatus {
+  proxy_id: string;
+  url: string;
+  enabled: boolean;
+  status: "healthy" | "degraded" | "down";
+  detail: string;
+  consecutive_transport_failures: number;
+  last_outcome: string | null;
+  last_success_at: string | null;
+}
+
+export interface ProxyPoolStatus {
+  enabled: boolean;
+  retry_on_access_denied: boolean;
+  items: ProxyEndpointStatus[];
+}
+
 export interface ProbeHealth {
   probe_id: string;
   platform: string;
@@ -166,6 +197,80 @@ export interface ProbeHealth {
   consecutive_failures: number;
   fallback_ratio_24h: number;
   enabled: boolean;
+  degradation_rate: number | null;
+  preempt_fallback: boolean;
+}
+
+export interface SceneConfig {
+  scene_id: string;
+  title: string;
+  fusion: "canonical_event" | "sku_offer";
+  dimensions: {
+    subjects: string[];
+    signal_domains: string[];
+    triggers: string[];
+    delivery: string[];
+    time_sensitivity: string;
+  };
+  compliance: Record<string, boolean>;
+  baseline_days_required: number;
+  price_rule_order: string[];
+}
+
+export interface RankedOffer {
+  offer_id: string;
+  platform: string;
+  source_url: string;
+  list_price: string;
+  payable: string;
+  score: string;
+  match_band: string;
+  price_basis: string;
+  price_protection: boolean;
+  reasons: string[];
+  steps: { layer: string; label: string; base_before: string; deduction: string; payable_after: string }[];
+}
+
+export interface PricePayload {
+  sku_code: string;
+  sku_title: string;
+  node: string;
+  path: string;
+  label: string;
+  baseline_days: number;
+  baseline_required: number;
+  baseline_median: string | null;
+  baseline_median_provisional: boolean;
+  confidence_reduced: boolean;
+  uncertainties: string[];
+  ranking: RankedOffer[];
+  withheld: { platform: string; reason: string; price_basis: string; match_band: string }[];
+  abstain: {
+    executable: { statement: string; payable: string; source_url: string }[];
+    confirmations: string[];
+    risks: string[];
+    prohibited: string[];
+  };
+}
+
+export interface ProductImage {
+  image_id: string;
+  sku_code: string;
+  source_page_url: string;
+  image_url: string;
+  content_type: string;
+  byte_size: number;
+  sha256: string;
+  acquisition_mode: string;
+  collected_at: string | null;
+}
+
+export interface SceneDecision {
+  decision_id: string;
+  node: string;
+  path: string;
+  created_at: string | null;
+  payload: PricePayload;
 }
 
 export interface Dashboard {

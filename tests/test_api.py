@@ -7,6 +7,16 @@ from prism.db.session import session_scope
 from prism.demo.seed import seed
 
 
+def test_service_index(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "稜鏡 Prism Bifröst"
+    assert body["status"] == "ok"
+    assert body["docs"] == "/docs"
+    assert body["proxies"] == "/api/v1/health/proxies"
+
+
 def test_console_contract(runtime, client):
     seed(runtime, datetime(2026, 10, 21, 8, tzinfo=timezone.utc))
     headers = {"Authorization": "Bearer dev-analyst"}

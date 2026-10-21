@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from prism.raven.base import Probe, RawItem
+from prism.raven.degrade import PREEMPT_REASON
 
 
 class ProbeUnavailable(RuntimeError):
@@ -40,9 +41,20 @@ class ProbeRouter:
             raise ValueError("探針至少需要一個後端")
         self.backends = sorted(backends, key=lambda item: item.priority)
 
-    async def fetch(self, query_or_feed: str, since: datetime, limit: int = 100) -> RouteResult:
+    async def fetch(
+        self,
+        query_or_feed: str,
+        since: datetime,
+        limit: int = 100,
+        preempt_fallback: bool = False,
+    ) -> RouteResult:
         attempts: list[RouteAttempt] = []
-        for index, backend in enumerate(self.backends):
+        start = 0
+        if preempt_fallback and len(self.backends) > 1:
+            primary = self.backends[0]
+            attempts.append(RouteAttempt(primary.backend_id, False, PREEMPT_REASON))
+            start = 1
+        for index, backend in enumerate(self.backends[start:], start=start):
             try:
                 items = await backend.probe.fetch(query_or_feed, since, limit)
             except Exception as exc:  # noqa: BLE001 — 路由層必須吞掉單後端失敗才能降級

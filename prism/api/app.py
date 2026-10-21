@@ -39,6 +39,8 @@ from prism.herald.review import (
     rescore_after,
     split_event,
 )
+from prism.api.images import register_image_routes
+from prism.api.scenes import register_scene_routes
 from prism.runtime import PrismRuntime
 
 
@@ -101,10 +103,25 @@ def create_app(runtime: PrismRuntime | None = None) -> FastAPI:
     def runtime_of(request: Request) -> PrismRuntime:
         return request.app.state.runtime
 
+    @application.get("/")
+    def service_index() -> dict:
+        return {
+            "name": "稜鏡 Prism Bifröst",
+            "status": "ok",
+            "docs": "/docs",
+            "probes": "/api/v1/health/probes",
+            "proxies": "/api/v1/health/proxies",
+        }
+
     @application.get("/api/v1/health/probes")
     def probe_health(request: Request, principal: Principal = Depends(principal_from_request)) -> dict:
         require_role(principal, "viewer")
         return {"items": runtime_of(request).configured_probe_status()}
+
+    @application.get("/api/v1/health/proxies")
+    def proxy_health(request: Request, principal: Principal = Depends(principal_from_request)) -> dict:
+        require_role(principal, "viewer")
+        return runtime_of(request).configured_proxy_status()
 
     @application.get("/api/v1/events")
     def list_events(
@@ -431,6 +448,8 @@ def create_app(runtime: PrismRuntime | None = None) -> FastAPI:
                 "probes": runtime_of(request).configured_probe_status(),
             }
 
+    register_scene_routes(application)
+    register_image_routes(application)
     return application
 
 

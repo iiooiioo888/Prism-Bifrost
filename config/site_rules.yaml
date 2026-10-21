@@ -32,3 +32,6 @@ sites:
   - domain: feeds.example
     allow_fetch: true
     respect_robots: true
+  - domain: catalog.example
+    allow_fetch: true
+    respect_robots: true

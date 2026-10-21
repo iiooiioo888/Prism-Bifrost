@@ -11,6 +11,11 @@ from sqlalchemy import select
 
 from prism.db.models import AlertRow, CanonicalEvent, EventAssessment, EventMention, MergeSuggestion
 from prism.db.session import session_scope
+from prism.commerce.images import ProductImageService
+from prism.commerce.service import CommerceError, CommerceService
+from prism.raven.compliance import ComplianceError
+from prism.raven.images import ImageCrawlError
+from prism.raven.proxies import AccessDenied, ProxyPoolExhausted
 from prism.demo.seed import seed
 from prism.herald.brief import BriefService
 from prism.horn.channels import test_channels
@@ -28,6 +33,7 @@ watch_app = typer.Typer(help="海姆達爾：告警與評分", no_args_is_help=T
 herald_app = typer.Typer(help="伊里斯：簡報與複核", no_args_is_help=True)
 horn_app = typer.Typer(help="加拉爾號角：告警通道", no_args_is_help=True)
 demo_app = typer.Typer(help="驗收資料", no_args_is_help=True)
+scene_app = typer.Typer(help="場景配置與決策", no_args_is_help=True)
 
 app.add_typer(raven_app, name="raven")
 app.add_typer(bridge_app, name="bridge")
@@ -37,6 +43,7 @@ app.add_typer(watch_app, name="watch")
 app.add_typer(herald_app, name="herald")
 app.add_typer(horn_app, name="horn")
 app.add_typer(demo_app, name="demo")
+app.add_typer(scene_app, name="scene")
 
 
 def _runtime() -> PrismRuntime:
@@ -70,9 +77,52 @@ def raven_status() -> None:
                 str(item["consecutive_failures"]),
                 item["last_success_at"] or "—",
                 item["detail"],
+                "—" if item.get("degradation_rate") is None else f"{float(item['degradation_rate']):.2f}",
+                "是" if item.get("preempt_fallback") else "否",
             ]
         )
-    _print_table(["探針", "狀態", "備選比例", "連續失敗", "最近成功", "說明"], rows)
+    _print_table(["探針", "狀態", "備選比例", "連續失敗", "最近成功", "說明", "劣化", "提前備選"], rows)
+
+
+@raven_app.command("proxies")
+def raven_proxies() -> None:
+    """出口代理池。目標拒絕時不會改用其他 IP。"""
+    runtime = _runtime()
+    status = runtime.configured_proxy_status()
+    typer.echo(f"代理池啟用：{'是' if status['enabled'] else '否'}，拒絕後換 IP：否")
+    rows = []
+    for item in status["items"]:
+        rows.append(
+            [
+                item["proxy_id"],
+                item["status"],
+                str(item["consecutive_transport_failures"]),
+                item["last_outcome"] or "—",
+                item["detail"],
+            ]
+        )
+    _print_table(["代理", "狀態", "連續傳輸失敗", "最近結果", "說明"], rows)
+
+
+@raven_app.command("images")
+def raven_images(
+    sku: str = typer.Option(..., "--sku", help="標準化 SKU"),
+    url: str = typer.Option(..., "--url", help="已允許網域上的公開商品頁"),
+    scene: str = typer.Option("double11", "--scene", help="場景"),
+) -> None:
+    """抓取頁面上標成商品圖的公開圖片。不跟隨重新導向，目標拒絕時不換 IP。"""
+    runtime = _runtime()
+    try:
+        result = ProductImageService(runtime).crawl(scene_id=scene, sku_code=sku, page_url=url)
+    except (CommerceError, ComplianceError, AccessDenied, ImageCrawlError, ProxyPoolExhausted) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+    if result["note"]:
+        typer.echo(result["note"])
+    for item in result["images"]:
+        typer.echo(f"已保存 {item['byte_size']} bytes  {item['content_type']}  {item['image_url']}")
+    for item in result["rejected"]:
+        typer.echo(f"未保存 {item['url']}：{item['reason']}")
 
 
 @raven_app.command("probe")
@@ -277,13 +327,44 @@ def horn_test() -> None:
         typer.echo(f"{result.channel}：{mark}，{result.detail}")
 
 
+@scene_app.command("list")
+def scene_list() -> None:
+    """列出場景。場景是配置，不新增流水線。"""
+    runtime = _runtime()
+    rows = []
+    for scene in runtime.settings.scenes.values():
+        rows.append([scene.scene_id, scene.title, scene.fusion, scene.time_sensitivity])
+    _print_table(["場景", "名稱", "融合", "時間敏感度"], rows)
+
+
+@scene_app.command("decide")
+def scene_decide(sku: str, node: str = "onsale", path: str = "fast", scene: str = "double11") -> None:
+    """對標準化 SKU 產出可複核結論。金額只來自規則引擎。"""
+    runtime = _runtime()
+    try:
+        payload = CommerceService(runtime).decide(scene_id=scene, sku_code=sku, node=node, path=path)
+    except CommerceError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+    typer.echo(payload["label"])
+    if payload.get("confidence_reduced"):
+        typer.echo(f"歷史價格基線 {payload['baseline_days']} 日，未滿 {payload['baseline_required']} 日，結論置信度降低")
+    for item in payload["ranking"]:
+        typer.echo(f"{item['platform']}  實付 {item['payable']}  分數 {item['score']}")
+    for line in payload["abstain"]["confirmations"]:
+        typer.echo(f"待確認：{line}")
+    for line in payload["abstain"]["risks"]:
+        typer.echo(f"風險：{line}")
+
+
 @demo_app.command("seed")
 def demo_seed() -> None:
     """寫入虛構公開訊號，供第一階段驗收。"""
     result = seed()
     typer.echo(
         f"事件 {result.get('events', 0)}，入庫 {result.get('stored', 0)}，"
-        f"近似 {result.get('near_duplicates', 0)}，已種入 {result.get('seeded', 0)}"
+        f"近似 {result.get('near_duplicates', 0)}，已種入 {result.get('seeded', 0)}，"
+        f"場景種入 {result.get('commerce_seeded', 0)}"
     )
 
 

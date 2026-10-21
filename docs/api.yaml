@@ -148,7 +148,83 @@ paths:
     get:
       summary: 探針健康度
       responses:
-        "200": { description: 含降級與未啟用通道 }
+        "200":
+          description: 含降級、未啟用通道、劣化速率與是否提前備選
+  /health/proxies:
+    get:
+      summary: 出口代理池
+      responses:
+        "200":
+          description: 代理啟用狀態。拒絕後不換 IP
+  /scenes:
+    get:
+      summary: 場景配置
+      responses:
+        "200": { description: 五維度、融合方式與合規登記 }
+  /scenes/{scene_id}:
+    get:
+      summary: 單一場景
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 場景配置 }
+  /scenes/{scene_id}/decisions:
+    get:
+      summary: 場景決策
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 可複核結論，金額為字串 }
+  /scenes/{scene_id}/images:
+    get:
+      summary: 某 SKU 已保存的公開商品圖
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: sku_code
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 商品圖清單。沒有 SKU 時 items 為空 }
+    post:
+      summary: 從公開頁抓取標成商品圖的檔案
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 已保存與未保存的圖片。不跟隨重新導向 }
+        "403": { description: 站點規則、robots 或目標拒絕。拒絕後不換 IP }
+  /product-images/{image_id}:
+    get:
+      summary: 商品圖檔
+      parameters:
+        - in: path
+          name: image_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: png、jpeg、gif 或 webp 位元組 }
+  /scenes/{scene_id}/decide:
+    post:
+      summary: 產出 SKU 決策
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 快路徑或慢路徑結論 }
   /review/queue:
     get:
       summary: 待複核歸併建議
