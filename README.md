@@ -8,6 +8,7 @@
 - `docs/architecture.md`
 - `docs/schema.sql`
 - `docs/api.yaml`
+- `docs/tool-evaluation.md`
 
 ## 本地運行
 
