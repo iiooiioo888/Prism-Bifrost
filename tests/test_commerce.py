@@ -164,6 +164,13 @@ def test_ranking_prefers_protected_offer_over_lower_payable():
     assert payload["ranking"][0]["platform"] == "乙店"
     assert payload["ranking"][0]["payable"] == "198.00"
     assert payload["ranking"][0]["score"] == "0.575"
+    assert payload["sku_match"]["limits_conclusion"] is True
+    assert payload["sku_match"]["conclusion_confidence_cap"] == "0.920"
+    assert payload["ranking"][0]["match_cap"] == "0.920"
+    assert payload["ranking"][0]["price_protection_verdict"]["applies"] is True
+    assert payload["ranking"][0]["price_protection_verdict"]["matched_exclusions"] == []
+    assert "days" not in payload["ranking"][0]["price_protection_verdict"]
+    assert payload["abstain"]["executable"][0]["confidence_cap"] == "0.920"
     assert payload["ranking"][1]["platform"] == "甲店"
     assert payload["ranking"][1]["payable"] == "180.00"
     assert payload["ranking"][1]["score"] == "0.485"
