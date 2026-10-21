@@ -302,8 +302,17 @@ export interface RankedOffer {
   payable: string;
   score: string;
   match_band: string;
+  match_cap: string;
+  match_limits_conclusion: boolean;
   price_basis: string;
   price_protection: boolean;
+  price_protection_verdict: {
+    applies: boolean;
+    trigger: string;
+    matched_exclusions: string[];
+    unparsed: boolean;
+    detail: string;
+  };
   reasons: string[];
   steps: { layer: string; label: string; base_before: string; deduction: string; payable_after: string }[];
 }
@@ -320,6 +329,7 @@ export interface PricePayload {
   baseline_median_provisional: boolean;
   confidence_reduced: boolean;
   uncertainties: string[];
+  sku_match: { limits_conclusion: boolean; conclusion_confidence_cap: string | null };
   ranking: RankedOffer[];
   withheld: { platform: string; reason: string; price_basis: string; match_band: string }[];
   abstain: {

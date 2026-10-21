@@ -235,10 +235,13 @@ function Decision({ payload }: { payload: PricePayload }) {
             : ""}
         。節點 {payload.node}，路徑 {payload.path === "fast" ? "快速" : "慢速"}。
       </p>
+      {payload.sku_match?.conclusion_confidence_cap && (
+        <p>結論置信度不得高於 SKU 匹配上限 {payload.sku_match.conclusion_confidence_cap}。</p>
+      )}
       <table>
         <thead>
           <tr>
-            <th>方案</th><th>標價</th><th>實付</th><th>排序分數</th><th>價保</th><th>匹配</th><th>價格基準</th>
+            <th>方案</th><th>標價</th><th>實付</th><th>排序分數</th><th>價保</th><th>匹配上限</th><th>價格基準</th>
           </tr>
         </thead>
         <tbody>
@@ -249,7 +252,7 @@ function Decision({ payload }: { payload: PricePayload }) {
               <td>{offer.payable}</td>
               <td>{offer.score}</td>
               <td>{offer.price_protection ? "成立" : "不成立"}</td>
-              <td>{offer.match_band}</td>
+              <td>{offer.match_band === "high" ? "高檔" : offer.match_band === "medium" ? "中檔" : "低檔"} {offer.match_cap}</td>
               <td>{offer.price_basis === "guest" ? "遊客態" : offer.price_basis}</td>
             </tr>
           ))}
@@ -258,6 +261,7 @@ function Decision({ payload }: { payload: PricePayload }) {
       {leader && (
         <div className="panel" style={{ marginTop: 14 }}>
           <strong>{leader.platform} 排在前面</strong>
+          {leader.price_protection_verdict && <p>{leader.price_protection_verdict.detail}</p>}
           <ul>
             {leader.reasons.map((reason) => (
               <li key={reason}>{reason}</li>
