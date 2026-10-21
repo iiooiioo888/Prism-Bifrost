@@ -336,6 +336,30 @@ CREATE TABLE proxy_run (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 用戶要監測的一種商品。到五個平台查找公開標價，不寫 canonical_event。
+CREATE TABLE product_monitor (
+  monitor_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  scene_id    TEXT NOT NULL,
+  query       TEXT NOT NULL,
+  sku_code    TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (scene_id, query)
+);
+
+CREATE TABLE product_monitor_hit (
+  hit_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  monitor_id   UUID NOT NULL REFERENCES product_monitor(monitor_id),
+  run_id       UUID NOT NULL,
+  platform     TEXT NOT NULL,
+  status       TEXT NOT NULL CHECK (status IN ('priced','withheld','blocked','empty')),
+  detail       TEXT NOT NULL,
+  source_url   TEXT,
+  title        TEXT,
+  list_price   TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 研判：規則引擎與排序結果。不引用 canonical_event。
 CREATE TABLE price_decision (
   decision_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -13,6 +13,7 @@ from prism.db.models import AlertRow, CanonicalEvent, EventAssessment, EventMent
 from prism.db.session import session_scope
 from prism.commerce.images import ProductImageService
 from prism.commerce.marketplaces import ListingError, collect_listing, marketplace_catalog
+from prism.commerce.monitor import monitor_product
 from prism.commerce.service import CommerceError, CommerceService
 from prism.raven.compliance import ComplianceError
 from prism.raven.images import ImageCrawlError
@@ -336,6 +337,25 @@ def scene_list() -> None:
     for scene in runtime.settings.scenes.values():
         rows.append([scene.scene_id, scene.title, scene.fusion, scene.time_sensitivity])
     _print_table(["場景", "名稱", "融合", "時間敏感度"], rows)
+
+
+@scene_app.command("monitor")
+def scene_monitor(
+    query: str = typer.Option(..., "--query", help="要監控的商品名稱"),
+    scene: str = typer.Option("double11", "--scene", help="商品場景"),
+) -> None:
+    """到天貓、淘寶、拼多多、京東、轉轉讀這個商品的公開標價。"""
+    runtime = _runtime()
+    try:
+        result = asyncio.run(monitor_product(runtime, scene_id=scene, query=query))
+    except (ListingError, CommerceError, ComplianceError, AccessDenied, ProxyPoolExhausted) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+    typer.echo(result["detail"])
+    for platform in result["platforms"]:
+        prices = [item["list_price"] for item in platform["items"] if item.get("list_price")]
+        shown = "、".join(prices) if prices else platform["status"]
+        typer.echo(f"{platform['label']}  {shown}  {platform['detail']}")
 
 
 @scene_app.command("listing")

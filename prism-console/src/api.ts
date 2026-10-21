@@ -61,6 +61,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ url }),
     }),
+  monitorProduct: (sceneId: string, query: string) =>
+    request<ProductMonitorReport>(`/api/v1/scenes/${encodeURIComponent(sceneId)}/monitors`, {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    }),
   sceneDecisions: (sceneId: string) => request<{ items: SceneDecision[] }>(`/api/v1/scenes/${sceneId}/decisions`),
   productImages: (sceneId: string, skuCode: string) =>
     request<{ sku_code: string; items: ProductImage[] }>(
@@ -207,10 +212,39 @@ export interface ProbeHealth {
   preempt_fallback: boolean;
 }
 
+export interface MonitorItem {
+  title: string | null;
+  source_url: string | null;
+  list_price: string | null;
+  status: "priced" | "withheld" | "blocked" | "empty";
+  detail: string;
+}
+
+export interface MonitorPlatform {
+  platform: string;
+  label: string;
+  status: "priced" | "withheld" | "blocked" | "empty";
+  detail: string;
+  items: MonitorItem[];
+}
+
+export interface ProductMonitorReport {
+  monitor_id: string;
+  run_id: string;
+  scene_id: string;
+  query: string;
+  sku_code: string;
+  match_confidence: string;
+  event_created: boolean;
+  detail: string;
+  platforms: MonitorPlatform[];
+}
+
 export interface Marketplace {
   platform: string;
   label: string;
   hosts: string[];
+  search_host: string;
 }
 
 export interface ProductListing {

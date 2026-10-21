@@ -162,6 +162,18 @@ paths:
       responses:
         "200":
           description: 只含天貓、淘寶、拼多多、京東、轉轉
+  /scenes/{scene_id}/monitors:
+    post:
+      summary: 依商品名稱到五個平台監測公開標價
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 各平台的公開標價或停止原因。不建立規範事件 }
+        "404": { description: 場景不是商品監測 }
+        "422": { description: 商品名稱無法用於監測 }
   /scenes/{scene_id}/listings:
     post:
       summary: 讀取商品頁並寫入 SKU 報價

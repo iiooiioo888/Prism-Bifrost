@@ -18,7 +18,7 @@ from prism.raven.proxies import (
     ProxyPoolExhausted,
     fetch_bytes_with_pool,
 )
-from prism.raven.robots import robots_allows
+from prism.raven.robots import robots_allows, robots_target
 
 MAX_PRODUCT_IMAGES = 4
 
@@ -264,8 +264,7 @@ async def _ensure_robots(
     body = await _load_robots(url, policy, pool, transport, failures, attempts, cache)
     if body is None:
         return
-    path = urlparse(url).path or "/"
-    if not robots_allows(body, path):
+    if not robots_allows(body, robots_target(url)):
         error = ComplianceError(f"robots.txt 不允許這個路徑，已拒絕：{url}")
         error.attempts = tuple(attempts)  # type: ignore[attr-defined]
         raise error
@@ -284,7 +283,7 @@ async def _fetch_one(
     if not _host_allowed(image_url, page_url, policy):
         return RejectedImage(image_url, "圖片網域未允許，未抓取")
     robots_body = await _load_robots(image_url, policy, pool, transport, failures, attempts, cache)
-    if robots_body is not None and not robots_allows(robots_body, urlparse(image_url).path or "/"):
+    if robots_body is not None and not robots_allows(robots_body, robots_target(image_url)):
         return RejectedImage(image_url, "robots.txt 不允許這個路徑，未抓取")
     try:
         policy.assert_allowed(image_url)

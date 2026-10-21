@@ -38,13 +38,22 @@ sites:
   - domain: detail.tmall.com
     allow_fetch: true
     respect_robots: true
+  - domain: list.tmall.com
+    allow_fetch: true
+    respect_robots: true
   - domain: item.taobao.com
+    allow_fetch: true
+    respect_robots: true
+  - domain: s.taobao.com
     allow_fetch: true
     respect_robots: true
   - domain: mobile.yangkeduo.com
     allow_fetch: true
     respect_robots: true
   - domain: item.jd.com
+    allow_fetch: true
+    respect_robots: true
+  - domain: search.jd.com
     allow_fetch: true
     respect_robots: true
   - domain: m.zhuanzhuan.com

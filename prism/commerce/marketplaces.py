@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import parse_qs, urlparse, urlunparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse, urlunparse
 
 from sqlalchemy import func, select
 
@@ -27,7 +27,7 @@ from prism.raven.proxies import (
     ProxyPoolExhausted,
     TransportError,
 )
-from prism.raven.robots import robots_allows
+from prism.raven.robots import robots_allows, robots_target
 from prism.runtime import PrismRuntime
 
 PRODUCT_UA = "PrismBot/1.0 (public product pages; no login; no cookies)"
@@ -53,20 +53,43 @@ class Marketplace:
     platform_id: str
     label: str
     hosts: tuple[str, ...]
+    search_host: str
+    search_path: str
+
+    def search_url(self, query: str) -> str:
+        return f"https://{self.search_host}{self.search_path.format(q=quote(query))}"
 
 
 MARKETPLACES: tuple[Marketplace, ...] = (
-    Marketplace("tmall", "天貓", ("detail.tmall.com",)),
-    Marketplace("taobao", "淘寶", ("item.taobao.com",)),
-    Marketplace("pinduoduo", "拼多多", ("mobile.yangkeduo.com",)),
-    Marketplace("jd", "京東", ("item.jd.com",)),
-    Marketplace("zhuanzhuan", "轉轉", ("m.zhuanzhuan.com", "www.zhuanzhuan.com")),
+    Marketplace("tmall", "天貓", ("detail.tmall.com",), "list.tmall.com", "/search_product.htm?q={q}"),
+    Marketplace("taobao", "淘寶", ("item.taobao.com",), "s.taobao.com", "/search?q={q}"),
+    Marketplace(
+        "pinduoduo",
+        "拼多多",
+        ("mobile.yangkeduo.com",),
+        "mobile.yangkeduo.com",
+        "/search_result.html?search_key={q}",
+    ),
+    Marketplace("jd", "京東", ("item.jd.com",), "search.jd.com", "/Search?keyword={q}&enc=utf-8"),
+    Marketplace(
+        "zhuanzhuan",
+        "轉轉",
+        ("m.zhuanzhuan.com", "www.zhuanzhuan.com"),
+        "www.zhuanzhuan.com",
+        "/search?keyword={q}",
+    ),
 )
+LISTINGS_PER_PLATFORM = 3
 
 
 def marketplace_catalog() -> list[dict[str, Any]]:
     return [
-        {"platform": item.platform_id, "label": item.label, "hosts": list(item.hosts)}
+        {
+            "platform": item.platform_id,
+            "label": item.label,
+            "hosts": list(item.hosts),
+            "search_host": item.search_host,
+        }
         for item in MARKETPLACES
     ]
 
@@ -89,6 +112,55 @@ def identify(url: str) -> tuple[Marketplace, str]:
     if item_id is None:
         raise ListingError("網址裡沒有商品編號")
     return platform, item_id
+
+
+def listing_links(html: str, base_url: str, limit: int = LISTINGS_PER_PLATFORM) -> list[str]:
+    """從搜尋頁抽出商品頁連結。只保留這五個平台能辨認商品編號的網址。"""
+    parser = _PageParser()
+    parser.feed(html)
+    candidates: list[str] = []
+    for block in parser.scripts:
+        try:
+            payload = json.loads(block)
+        except json.JSONDecodeError:
+            continue
+        for node in _products(payload):
+            raw = node.get("url")
+            offers = node.get("offers")
+            if not isinstance(raw, str) and isinstance(offers, dict):
+                raw = offers.get("url")
+            if isinstance(raw, str) and raw.strip():
+                candidates.append(urljoin(base_url, raw.strip()))
+    candidates.extend(urljoin(base_url, href) for href in parser.hrefs)
+    found: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for candidate in candidates:
+        try:
+            platform, item_id = identify(candidate.split("#", 1)[0])
+        except ListingError:
+            continue
+        key = (platform.platform_id, item_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append(candidate.split("#", 1)[0])
+        if len(found) >= limit:
+            break
+    return found
+
+
+async def open_public_page(
+    url: str,
+    *,
+    policy: SitePolicy,
+    pool: ProxyPoolConfig,
+    transport: BytesTransport | None = None,
+) -> tuple[int, bytes, tuple[ProxyAttempt, ...]]:
+    fetcher = transport or _default_transport
+    attempts: list[ProxyAttempt] = []
+    await _ensure_robots(url, policy, pool, fetcher, attempts)
+    status, body = await _get(url, policy, pool, fetcher, attempts)
+    return status, body, tuple(attempts)
 
 
 async def read_product_page(
@@ -127,17 +199,19 @@ def store_listing(
     item_id: str,
     product: ParsedProduct,
     attempts: tuple[ProxyAttempt, ...],
+    sku_code: str | None = None,
+    sku_title: str | None = None,
 ) -> dict[str, Any]:
     scene = runtime.settings.scenes.get(scene_id)
     if scene is None or scene.fusion != "sku_offer":
         raise CommerceError("這個場景不是商品監測")
     before_events, before_mentions = _event_counts(runtime)
     collected = datetime.now(timezone.utc)
-    sku_code = f"{platform.platform_id}:{item_id}"
+    code = sku_code or f"{platform.platform_id}:{item_id}"
     service = CommerceService(runtime)
     offer_id = service.record_offer(
-        sku_code=sku_code,
-        sku_title=product.title,
+        sku_code=code,
+        sku_title=sku_title or product.title,
         scene_id=scene_id,
         platform=platform.platform_id,
         source_url=url,
@@ -155,7 +229,7 @@ def store_listing(
     )
     if product.list_price is not None and product.price_basis == "guest":
         service.record_observation(
-            sku_code=sku_code,
+            sku_code=code,
             observed_on=collected.date(),
             list_price=product.list_price,
             source_url=url,
@@ -170,7 +244,7 @@ def store_listing(
         "scene_id": scene_id,
         "platform": platform.platform_id,
         "label": platform.label,
-        "sku_code": sku_code,
+        "sku_code": code,
         "title": product.title,
         "source_url": url,
         "list_price": None if product.list_price is None else money_text(product.list_price),
@@ -330,11 +404,14 @@ class _PageParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.scripts: list[str] = []
         self.meta: dict[str, str] = {}
+        self.hrefs: list[str] = []
         self._capture = False
         self._buf: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attr = {key.lower(): (value or "") for key, value in attrs}
+        if tag == "a" and attr.get("href", "").strip() and len(self.hrefs) < 200:
+            self.hrefs.append(attr["href"].strip())
         if tag == "script" and attr.get("type", "").lower() == "application/ld+json":
             self._capture = True
             self._buf = []
@@ -386,7 +463,7 @@ async def _ensure_robots(
         raise ListingError(f"無法確認 robots.txt（{status}），已停止", tuple(attempts))
     else:
         text = body.decode("utf-8", errors="replace")
-    if not robots_allows(text, parsed.path or "/"):
+    if not robots_allows(text, robots_target(url)):
         error = ComplianceError(f"robots.txt 不允許這個路徑，已拒絕：{url}")
         error.attempts = tuple(attempts)  # type: ignore[attr-defined]
         raise error

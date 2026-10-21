@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, currentRole, type PricePayload, type ProductImage, type ProductListing, type SceneConfig } from "../api";
+import { api, currentRole, type PricePayload, type ProductImage, type ProductListing, type ProductMonitorReport, type SceneConfig } from "../api";
 import { Loading, useAsync } from "../components";
 
 const ORDER_TEXT: Record<string, string> = {
@@ -15,6 +15,9 @@ export function ScenePage() {
   const markets = useAsync(() => api.marketplaces().then((payload) => payload.items), []);
   const decisions = useAsync(() => api.sceneDecisions("double11").then((payload) => payload.items), []);
   const images = useAsync(() => api.productImages("double11", "DEMO-SKU-01"), []);
+  const [query, setQuery] = useState("保溫杯");
+  const [report, setReport] = useState<ProductMonitorReport | null>(null);
+  const [monitorError, setMonitorError] = useState("");
   const [url, setUrl] = useState("https://item.jd.com/400.html");
   const [listing, setListing] = useState<ProductListing | null>(null);
   const [listingError, setListingError] = useState("");
@@ -30,7 +33,7 @@ export function ScenePage() {
     <section>
       <h2 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>商品</h2>
       <p style={{ color: "var(--muted)" }}>
-        只讀天貓、淘寶、拼多多、京東、轉轉的商品頁，寫入 SKU 報價。不建立規範事件，也不做事件監測。
+        輸入一種商品後，到天貓、淘寶、拼多多、京東、轉轉讀公開標價。結果寫入 SKU 報價，不建立規範事件。
       </p>
       <article className="panel">
         <h3 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>商品平台</h3>
@@ -39,17 +42,61 @@ export function ScenePage() {
         </p>
         <table>
           <thead>
-            <tr><th>平台</th><th>商品頁網域</th></tr>
+            <tr><th>平台</th><th>搜尋</th><th>商品頁</th></tr>
           </thead>
           <tbody>
             {markets.data?.map((item) => (
               <tr key={item.platform}>
                 <td>{item.label}</td>
+                <td>{item.search_host}</td>
                 <td>{item.hosts.join("、")}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        {currentRole() !== "viewer" && (
+          <form
+            style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setBusy(true);
+              setMonitorError("");
+              try {
+                setReport(await api.monitorProduct("double11", query));
+              } catch (caught) {
+                setReport(null);
+                setMonitorError(caught instanceof Error ? caught.message : "監測失敗");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <label htmlFor="product-query">商品名稱</label>
+            <input id="product-query" value={query} onChange={(event) => setQuery(event.target.value)} style={{ minWidth: 240 }} />
+            <button className="btn" type="submit" disabled={busy}>{busy ? "監測中" : "在五個平台監測價格"}</button>
+          </form>
+        )}
+        {monitorError && <div className="error" style={{ marginTop: 12 }}>{monitorError}</div>}
+        {report && (
+          <div style={{ marginTop: 12 }}>
+            <p>{report.detail}</p>
+            <table>
+              <thead>
+                <tr><th>平台</th><th>狀態</th><th>標價</th><th>說明</th></tr>
+              </thead>
+              <tbody>
+                {report.platforms.map((platform) => (
+                  <tr key={platform.platform}>
+                    <td>{platform.label}</td>
+                    <td>{platform.status === "priced" ? "已記錄" : platform.status === "withheld" ? "未寫入標價" : platform.status === "blocked" ? "已停止" : "沒有公開連結"}</td>
+                    <td>{platform.items.map((item) => item.list_price).filter(Boolean).join("、") || "—"}</td>
+                    <td>{platform.items[0]?.title || platform.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         {currentRole() !== "viewer" && (
           <form
             style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}

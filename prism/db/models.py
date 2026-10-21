@@ -443,6 +443,43 @@ class ProxyRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class ProductMonitor(Base):
+    """用戶要監測的一種商品。各平台報價掛在同一個 SKU，不寫規範事件。"""
+
+    __tablename__ = "product_monitor"
+    __table_args__ = (UniqueConstraint("scene_id", "query", name="uq_product_monitor_query"),)
+
+    monitor_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    scene_id: Mapped[str] = mapped_column(Text, nullable=False)
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    sku_code: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ProductMonitorHit(Base):
+    """一次監測裡，某個平台的一條公開結果或停止原因。"""
+
+    __tablename__ = "product_monitor_hit"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('priced','withheld','blocked','empty')",
+            name="ck_monitor_hit_status",
+        ),
+    )
+
+    hit_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    monitor_id: Mapped[str] = mapped_column(ForeignKey("product_monitor.monitor_id"), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    detail: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str | None] = mapped_column(Text)
+    list_price: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class PriceDecision(Base):
     """研判層。不引用 canonical_event，也不回寫報價事實。"""
 

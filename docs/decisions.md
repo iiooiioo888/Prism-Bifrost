@@ -163,4 +163,4 @@
 | 探針上的價格欄位 | 可選，通用歸併忽略 |
 | 出口代理池 | 只在傳輸失敗時換路；401、403、429 與驗證碼頁停止，不換 IP。配置若要求拒絕後重試，載入直接失敗。帳密不寫進設定檔 |
 | 商品圖 | 只收 og:image、itemprop=image、data-product-image。普通 img 不抓。單頁最多 4 張，單檔 2MB，只收 png、jpeg、gif、webp。不跟隨重新導向，不從圖讀價格，不建立規範事件 |
-| 商品平台 | 只接受 detail.tmall.com、item.taobao.com、mobile.yangkeduo.com、item.jd.com、m.zhuanzhuan.com、www.zhuanzhuan.com。標價只取頁面上的 Product 結構化欄位。單頁讀取的跨平台匹配置信度固定 0.250。不寫入登入態金額，不建立 canonical_event |
+| 商品平台 | 只接受天貓、淘寶、拼多多、京東、轉轉。依商品名稱到各平台公開搜尋頁，每平台最多 3 條商品頁。robots.txt 禁止的路徑（含 `*` 與查詢字串）不抓。標價只取 Product 結構化欄位。名稱監測的匹配置信度固定 0.250，只作監測，不能單獨成為可執行結論。不寫入登入態金額，不建立 canonical_event |

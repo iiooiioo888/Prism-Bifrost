@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from prism.api.deps import Principal, principal_from_request, require_role
 from prism.commerce.marketplaces import ListingError, collect_listing, marketplace_catalog
+from prism.commerce.monitor import monitor_product
 from prism.commerce.service import CommerceError, CommerceService
 from prism.raven.compliance import ComplianceError as FetchComplianceError
 from prism.raven.proxies import AccessDenied, ProxyPoolExhausted
@@ -26,6 +27,10 @@ class ListingBody(BaseModel):
     url: str = Field(min_length=8, max_length=500)
 
 
+class MonitorBody(BaseModel):
+    query: str = Field(min_length=1, max_length=40)
+
+
 def register_scene_routes(application: FastAPI) -> None:
     def runtime_of(request: Request) -> PrismRuntime:
         return request.app.state.runtime
@@ -34,6 +39,25 @@ def register_scene_routes(application: FastAPI) -> None:
     def list_marketplaces(principal: Principal = Depends(principal_from_request)) -> dict:
         require_role(principal, "viewer")
         return {"items": marketplace_catalog()}
+
+    @application.post("/api/v1/scenes/{scene_id}/monitors")
+    def create_monitor(
+        scene_id: str,
+        body: MonitorBody,
+        request: Request,
+        principal: Principal = Depends(principal_from_request),
+    ) -> dict:
+        require_role(principal, "analyst")
+        try:
+            return asyncio.run(monitor_product(runtime_of(request), scene_id=scene_id, query=body.query))
+        except CommerceError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ListingError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except (FetchComplianceError, ComplianceError, AccessDenied) as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ProxyPoolExhausted as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     @application.post("/api/v1/scenes/{scene_id}/listings")
     def create_listing(
