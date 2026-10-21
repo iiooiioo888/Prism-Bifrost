@@ -7,7 +7,9 @@ from decimal import Decimal
 
 from prism.commerce.baseline import median_money
 from prism.commerce.money import money, money_text, score_text, unit
-from prism.commerce.rules import Adjustment, price_protection, match_band, solve
+from prism.commerce.protection import judge_protection
+from prism.commerce.rules import Adjustment, solve
+from prism.commerce.sku_match import mark_match
 
 PROHIBITED_STATEMENTS = (
     "最便宜",
@@ -65,30 +67,36 @@ def decide_offers(
     withheld: list[dict] = []
     uncertainties: list[str] = []
     for offer in offers:
-        band = match_band(offer.match_confidence, high=match_high, medium=match_medium)
-        comparable = offer.price_basis == "guest" and band != "low" and offer.list_price is not None
+        mark = mark_match(
+            offer.match_confidence,
+            high=match_high,
+            medium=match_medium,
+            acquisition_mode=offer.acquisition_mode,
+        )
+        verdict = judge_protection(
+            page_list_price_dropped=offer.page_list_price_dropped,
+            cause=offer.protection_cause,
+        )
+        comparable = offer.price_basis == "guest" and mark.band != "low" and offer.list_price is not None
         if not comparable:
-            withheld.append(_withheld(offer, band))
+            withheld.append(_withheld(offer, mark.band, mark.cap))
             continue
         assert offer.list_price is not None
         result = solve(offer.list_price, list(offer.adjustments))
         for adjustment in result.withheld:
             uncertainties.append(f"{offer.platform} 的{adjustment.label}資格無法確認，未套用該層")
-        if offer.protection_cause == "unparsed":
+        if verdict.unparsed:
             uncertainties.append(f"{offer.platform} 的價保排除條款未能完整解析，不把價保計入排序")
-        protected = price_protection(
-            page_list_price_dropped=offer.page_list_price_dropped,
-            cause=offer.protection_cause,
-        )
-        factor = unit("0.90") if offer.acquisition_mode == "fallback" else unit("1")
         solved.append(
             {
                 "offer": offer,
-                "band": band,
+                "band": mark.band,
+                "match_cap": mark.cap,
                 "payable": result.payable,
                 "steps": result.steps,
-                "protected": protected,
-                "cap": offer.match_confidence * factor,
+                "protected": verdict.applies,
+                "protection": verdict,
+                "cap": mark.cap,
             }
         )
     _assign_scores(solved, weights)
@@ -107,6 +115,7 @@ def decide_offers(
         provisional,
     )
     _guard_statements(abstain["executable"])
+    caps = [item["match_cap"] for item in solved]
     payload: dict = {
         "scene_id": scene_id,
         "sku_code": sku_code,
@@ -124,6 +133,10 @@ def decide_offers(
         "withheld": withheld,
         "abstain": abstain,
         "price_rule_order": ["item", "store", "platform", "red_packet", "national_subsidy"],
+        "sku_match": {
+            "limits_conclusion": True,
+            "conclusion_confidence_cap": None if not caps else score_text(min(caps)),
+        },
     }
     if path == "fast":
         payload["fast_path"] = {"cadence": "秒級到分鐘級", "uses": ["規則引擎", "決策合成器"]}
@@ -160,7 +173,7 @@ def _public_rank(item: dict) -> dict:
     offer: OfferInput = item["offer"]
     reasons = [
         f"實付 {money_text(item['payable'])} 由規則引擎按固定層級算出",
-        "頁面標價下降，價保成立" if item["protected"] else "價保不成立",
+        item["protection"].detail,
         f"庫存可靠性 {score_text(offer.inventory_reliability)}",
         f"售後可靠度 {score_text(offer.after_sales)}",
     ]
@@ -176,9 +189,12 @@ def _public_rank(item: dict) -> dict:
         "score": score_text(item["score"]),
         "match_confidence": score_text(offer.match_confidence),
         "match_band": item["band"],
+        "match_cap": score_text(item["match_cap"]),
+        "match_limits_conclusion": True,
         "price_basis": offer.price_basis,
         "comparable": True,
         "price_protection": item["protected"],
+        "price_protection_verdict": item["protection"].to_dict(),
         "acquisition_mode": offer.acquisition_mode,
         "reasons": reasons,
         "steps": [
@@ -194,7 +210,7 @@ def _public_rank(item: dict) -> dict:
     }
 
 
-def _withheld(offer: OfferInput, band: str) -> dict:
+def _withheld(offer: OfferInput, band: str, cap: Decimal) -> dict:
     if offer.price_basis == "logged_in":
         reason = "登入態價格不可比，且系統不採集登入態價格"
     elif offer.list_price is None:
@@ -208,6 +224,8 @@ def _withheld(offer: OfferInput, band: str) -> dict:
         "price_basis": offer.price_basis,
         "match_confidence": score_text(offer.match_confidence),
         "match_band": band,
+        "match_cap": score_text(cap),
+        "match_limits_conclusion": True,
         "reason": reason,
     }
 
@@ -236,6 +254,8 @@ def _abstain(
             "offer_id": offer.offer_id,
             "payable": money_text(item["payable"]),
             "source_url": offer.source_url,
+            "confidence_cap": score_text(item["match_cap"]),
+            "match_band": item["band"],
         }
         if item["band"] == "high":
             executable.append(entry)
@@ -254,6 +274,7 @@ def _abstain(
             ranking_statement += f"其餘可比較方案：{others}。"
         ranking_statement += "名次由價保、庫存可靠性與售後可靠度共同決定。"
         if leader["band"] == "high":
+            cited = [item["match_cap"] for item in solved]
             executable.insert(
                 0,
                 {
@@ -261,6 +282,8 @@ def _abstain(
                     "offer_id": leader_offer.offer_id,
                     "payable": money_text(leader["payable"]),
                     "source_url": leader_offer.source_url,
+                    "confidence_cap": score_text(min(cited)),
+                    "match_band": leader["band"],
                 },
             )
         else:

@@ -6,11 +6,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from prism.commerce.money import money
+from prism.commerce.protection import judge_protection
 from prism.scenes.registry import CANONICAL_PRICE_ORDER
-
-EXCLUDED_PROTECTION_CAUSES = frozenset(
-    {"national_subsidy", "platform_coupon", "red_packet", "billion_subsidy"}
-)
 
 
 class RuleOrderError(ValueError):
@@ -45,18 +42,8 @@ class SolveResult:
 
 
 def price_protection(*, page_list_price_dropped: bool, cause: str) -> bool:
-    """價保只看頁面標價是否下降。補貼、券與紅包不構成價保。排除條款未解析時不成立。"""
-    if cause in EXCLUDED_PROTECTION_CAUSES or cause == "unparsed":
-        return False
-    return bool(page_list_price_dropped) and cause == "page_list_price"
-
-
-def match_band(confidence: Decimal, *, high: Decimal, medium: Decimal) -> str:
-    if confidence >= high:
-        return "high"
-    if confidence >= medium:
-        return "medium"
-    return "low"
+    """價保布爾。排除條款的明細在 protection.judge_protection。"""
+    return judge_protection(page_list_price_dropped=page_list_price_dropped, cause=cause).applies
 
 
 def solve(

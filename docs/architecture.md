@@ -31,4 +31,4 @@
 
 場景掛在這條流水線上，不另開管道。`config/scenes.yaml` 用融合方式區分規範事件與標準化 SKU。SKU 的報價進 `sku_offer`，實付與排序進 `price_decision`，兩者都不寫 `canonical_event`。優惠順序、模型禁產金額與棄權分級都在程式結構裡，不靠提示詞。
 
-雙11的規則引擎在 `prism/commerce/`，不在 `prism/weave/`。事件指標仍只有 `persist_ready` 能寫。價格基線中位數由 `prism/commerce/baseline.py` 計算，不寫入 `event_metrics`。`RawItem` 上的 SKU 與價格欄位是可選介面，採集與歸併忽略它們。出口代理池預設關閉；目標拒絕時停止，不用另一個 IP 再試。商品圖只從允許網域的公開頁抓取明確標成商品圖的檔案，遵守 robots.txt，不跟隨重新導向，也不從圖裡讀價格。廣告圖、登入牆與驗證碼路徑不抓。
+雙11的規則引擎在 `prism/commerce/`，不在 `prism/weave/`。SKU 匹配置信度在 `prism/commerce/sku_match.py`，價保排除條款在 `prism/commerce/protection.py`。結論置信度不得高過匹配置信度。事件指標仍只有 `persist_ready` 能寫。價格基線中位數由 `prism/commerce/baseline.py` 計算，不寫入 `event_metrics`。`RawItem` 上的 SKU 與價格欄位是可選介面，採集與歸併忽略它們。出口代理池預設關閉；目標拒絕時停止，不用另一個 IP 再試。商品圖只從允許網域的公開頁抓取明確標成商品圖的檔案，遵守 robots.txt，不跟隨重新導向，也不從圖裡讀價格。廣告圖、登入牆與驗證碼路徑不抓。
