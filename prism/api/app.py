@@ -39,6 +39,7 @@ from prism.herald.review import (
     rescore_after,
     split_event,
 )
+from prism.api.scenes import register_scene_routes
 from prism.runtime import PrismRuntime
 
 
@@ -431,6 +432,7 @@ def create_app(runtime: PrismRuntime | None = None) -> FastAPI:
                 "probes": runtime_of(request).configured_probe_status(),
             }
 
+    register_scene_routes(application)
     return application
 
 

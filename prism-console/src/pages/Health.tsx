@@ -10,10 +10,10 @@ export function HealthPage() {
   return (
     <section>
       <h2 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>探針健康</h2>
-      <p style={{ color: "var(--muted)" }}>側橋啟用會顯示為降級，不會被靜默歸零。未啟用的登入態通道保持關閉。</p>
+      <p style={{ color: "var(--muted)" }}>側橋啟用會顯示為降級，不會被靜默歸零。失敗率加速上升時提前走備選。未啟用的登入態通道保持關閉。</p>
       <table>
         <thead>
-          <tr><th>探針</th><th>狀態</th><th>備選比例</th><th>連續失敗</th><th>最近成功</th><th>說明</th></tr>
+          <tr><th>探針</th><th>狀態</th><th>備選比例</th><th>連續失敗</th><th>劣化速率</th><th>提前備選</th><th>最近成功</th><th>說明</th></tr>
         </thead>
         <tbody>
           {state.data?.map((probe) => (
@@ -22,6 +22,8 @@ export function HealthPage() {
               <td><span className={`tag ${probe.status === "healthy" ? "ok" : probe.status === "degraded" ? "hot" : "bad"}`}>{STATUS_TEXT[probe.status]}</span></td>
               <td>{probe.fallback_ratio_24h.toFixed(2)}</td>
               <td>{probe.consecutive_failures}</td>
+              <td>{probe.degradation_rate == null ? "—" : probe.degradation_rate.toFixed(2)}</td>
+              <td>{probe.preempt_fallback ? "是" : "否"}</td>
               <td>{probe.last_success_at || "—"}</td>
               <td>{probe.detail}</td>
             </tr>

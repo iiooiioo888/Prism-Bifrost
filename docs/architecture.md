@@ -28,3 +28,5 @@
 | 控制台 | `prism-console` | 靜態資源與反向代理 |
 
 開發用權杖寫在 `config/prism.yaml`，只供本地驗收。正式環境改由密鑰管理注入，不沿用檔案裡的值。
+
+場景掛在這條流水線上，不另開管道。`config/scenes.yaml` 用融合方式區分規範事件與標準化 SKU。SKU 的報價進 `sku_offer`，實付與排序進 `price_decision`，兩者都不寫 `canonical_event`。優惠順序、模型禁產金額與棄權分級都在程式結構裡，不靠提示詞。

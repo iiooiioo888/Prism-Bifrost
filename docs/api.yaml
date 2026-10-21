@@ -148,7 +148,43 @@ paths:
     get:
       summary: 探針健康度
       responses:
-        "200": { description: 含降級與未啟用通道 }
+        "200":
+          description: 含降級、未啟用通道、劣化速率與是否提前備選
+  /scenes:
+    get:
+      summary: 場景配置
+      responses:
+        "200": { description: 五維度、融合方式與合規登記 }
+  /scenes/{scene_id}:
+    get:
+      summary: 單一場景
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 場景配置 }
+  /scenes/{scene_id}/decisions:
+    get:
+      summary: 場景決策
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 可複核結論，金額為字串 }
+  /scenes/{scene_id}/decide:
+    post:
+      summary: 產出 SKU 決策
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 快路徑或慢路徑結論 }
   /review/queue:
     get:
       summary: 待複核歸併建議

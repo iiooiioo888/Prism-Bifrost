@@ -53,6 +53,8 @@ export const api = {
   metrics: (id: string) => request<{ items: Metric[] }>(`/api/v1/events/${id}/metrics`),
   alerts: () => request<{ items: Alert[] }>("/api/v1/alerts"),
   probes: () => request<{ items: ProbeHealth[] }>("/api/v1/health/probes"),
+  scenes: () => request<{ items: SceneConfig[] }>("/api/v1/scenes"),
+  sceneDecisions: (sceneId: string) => request<{ items: SceneDecision[] }>(`/api/v1/scenes/${sceneId}/decisions`),
   dashboard: () => request<Dashboard>("/api/v1/dashboard"),
   briefs: () => request<{ items: Brief[] }>("/api/v1/briefs"),
   brief: (id: string) => request<Brief>(`/api/v1/briefs/${id}`),
@@ -166,6 +168,65 @@ export interface ProbeHealth {
   consecutive_failures: number;
   fallback_ratio_24h: number;
   enabled: boolean;
+  degradation_rate: number | null;
+  preempt_fallback: boolean;
+}
+
+export interface SceneConfig {
+  scene_id: string;
+  title: string;
+  fusion: "canonical_event" | "sku_offer";
+  dimensions: {
+    subjects: string[];
+    signal_domains: string[];
+    triggers: string[];
+    delivery: string[];
+    time_sensitivity: string;
+  };
+  compliance: Record<string, boolean>;
+  baseline_days_required: number;
+  price_rule_order: string[];
+}
+
+export interface RankedOffer {
+  offer_id: string;
+  platform: string;
+  source_url: string;
+  list_price: string;
+  payable: string;
+  score: string;
+  match_band: string;
+  price_basis: string;
+  price_protection: boolean;
+  reasons: string[];
+  steps: { layer: string; label: string; base_before: string; deduction: string; payable_after: string }[];
+}
+
+export interface PricePayload {
+  sku_code: string;
+  sku_title: string;
+  node: string;
+  path: string;
+  label: string;
+  baseline_days: number;
+  baseline_required: number;
+  confidence_reduced: boolean;
+  ranking: RankedOffer[];
+  withheld: { platform: string; reason: string; price_basis: string; match_band: string }[];
+  abstain: {
+    executable: { statement: string; payable: string; source_url: string }[];
+    confirmations: string[];
+    risks: string[];
+    prohibited: string[];
+  };
+}
+
+export interface SceneDecision {
+  decision_id: string;
+  node: string;
+  path: string;
+  created_at: string | null;
+  payload: PricePayload;
 }
 
 export interface Dashboard {

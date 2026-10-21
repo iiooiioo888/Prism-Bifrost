@@ -1,0 +1,69 @@
+# 場景是配置，不是新的流水線。融合方式決定掛到規範事件或標準化 SKU。
+scenes:
+  harbor_watch:
+    title: 港務觀測
+    fusion: canonical_event
+    retention_days: 365
+    dimensions:
+      subjects:
+        - 北境港務局
+      signal_domains:
+        - web
+        - news
+        - academic
+      triggers:
+        - priority>=0.75
+      delivery:
+        - console
+        - horn_dry_run
+      time_sensitivity: mixed
+    compliance:
+      login_reuse: false
+      fingerprint_simulation: false
+      risk_control_evasion: false
+      captcha_bypass: false
+      login_wall_bypass: false
+      public_visible_is_not_permission: true
+
+  double11:
+    title: 雙11比價
+    fusion: sku_offer
+    retention_days: 90
+    dimensions:
+      subjects:
+        - 標準化 SKU
+      signal_domains:
+        - public_price_page
+      triggers:
+        - presale
+        - onsale
+        - sprint
+      delivery:
+        - reviewable_conclusion
+      time_sensitivity: fast_and_slow
+    nodes:
+      - presale
+      - onsale
+      - sprint
+    price_rule_order:
+      - item
+      - store
+      - platform
+      - red_packet
+      - national_subsidy
+    ranking_weights:
+      payable: "0.40"
+      price_protection: "0.25"
+      inventory_reliability: "0.20"
+      after_sales: "0.15"
+    baseline_days_required: 14
+    sku_match:
+      high: "0.85"
+      medium: "0.65"
+    compliance:
+      login_reuse: false
+      fingerprint_simulation: false
+      risk_control_evasion: false
+      captcha_bypass: false
+      login_wall_bypass: false
+      public_visible_is_not_permission: true

@@ -268,3 +268,54 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER audit_log_no_update
   BEFORE UPDATE OR DELETE ON audit_log
   FOR EACH ROW EXECUTE FUNCTION forbid_audit_mutation();
+
+-- 標準化 SKU。各平台頁面是同一決策對象的可選方案，不寫入 canonical_event。
+CREATE TABLE sku (
+  sku_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code        TEXT NOT NULL UNIQUE,
+  title       TEXT NOT NULL,
+  scene_id    TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 事實：頁面可觀察的標價與優惠原文。求解後的實付不在此表。
+CREATE TABLE sku_offer (
+  offer_id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sku_id                    UUID NOT NULL REFERENCES sku(sku_id),
+  platform                  TEXT NOT NULL,
+  source_url                TEXT NOT NULL,
+  upstream_timestamp        TIMESTAMPTZ,
+  collected_at              TIMESTAMPTZ NOT NULL,
+  acquisition_mode          TEXT NOT NULL CHECK (acquisition_mode IN ('live','fallback')),
+  list_price                NUMERIC(12,2),
+  price_basis               TEXT NOT NULL CHECK (price_basis IN ('guest','logged_in')),
+  match_confidence          NUMERIC(6,4) NOT NULL,
+  page_list_price_dropped   BOOLEAN NOT NULL DEFAULT FALSE,
+  protection_cause          TEXT NOT NULL DEFAULT '',
+  inventory_reliability     NUMERIC(6,4) NOT NULL,
+  after_sales               NUMERIC(6,4) NOT NULL,
+  adjustments               JSONB NOT NULL DEFAULT '[]',
+  valid_until               TEXT,
+  created_at                TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE price_observation (
+  observation_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sku_id          UUID NOT NULL REFERENCES sku(sku_id),
+  observed_on     DATE NOT NULL,
+  list_price      NUMERIC(12,2) NOT NULL,
+  source_url      TEXT NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (sku_id, observed_on, source_url)
+);
+
+-- 研判：規則引擎與排序結果。不引用 canonical_event。
+CREATE TABLE price_decision (
+  decision_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sku_id       UUID NOT NULL REFERENCES sku(sku_id),
+  scene_id     TEXT NOT NULL,
+  node         TEXT NOT NULL,
+  path         TEXT NOT NULL CHECK (path IN ('fast','slow')),
+  payload      JSONB NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);

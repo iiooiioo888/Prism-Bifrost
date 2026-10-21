@@ -10,6 +10,7 @@ import { BriefsPage } from "./pages/Briefs";
 import { AbstainPage } from "./pages/Abstain";
 import { HealthPage } from "./pages/Health";
 import { ReviewPage } from "./pages/Review";
+import { ScenePage } from "./pages/Scene";
 
 export function App() {
   const probes = useAsync(() => api.probes().then((payload) => payload.items), [currentRole()]);
@@ -29,6 +30,7 @@ export function App() {
         <NavLink to="/briefs">簡報</NavLink>
         <NavLink to="/abstain">棄權</NavLink>
         <NavLink to="/health">探針健康</NavLink>
+        <NavLink to="/scenes">場景</NavLink>
         <div className="role">
           <label htmlFor="role">目前角色</label>
           <select
@@ -60,6 +62,7 @@ export function App() {
           <Route path="/briefs" element={<BriefsPage />} />
           <Route path="/abstain" element={<AbstainPage />} />
           <Route path="/health" element={<HealthPage />} />
+          <Route path="/scenes" element={<ScenePage />} />
           <Route path="/review" element={<ReviewPage />} />
         </Routes>
       </main>

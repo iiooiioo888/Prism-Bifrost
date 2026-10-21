@@ -18,6 +18,7 @@ from prism.db.models import ProbeFailure, ProbeHealthRow, ProbeRun
 from prism.db.session import init_db, make_engine, session_factory, session_scope
 from prism.raven.base import RawItem
 from prism.raven.compliance import SitePolicy
+from prism.raven.degrade import failure_acceleration, should_preempt_fallback
 from prism.raven.health import classify_health
 from prism.watch.service import WatchService
 from prism.weave.merge import Assignment, MergeEngine
@@ -141,10 +142,15 @@ class PrismRuntime:
         configured = self.settings.raven.get("probes", {})
         with session_scope(self.factory) as session:
             rows = {row.probe_id: row for row in session.scalars(select(ProbeHealthRow)).all()}
+            runs = session.scalars(select(ProbeRun).order_by(ProbeRun.created_at.asc(), ProbeRun.run_id.asc())).all()
+        flags: dict[str, list[bool]] = {}
+        for run in runs:
+            flags.setdefault(run.probe_id, []).append(bool(run.success))
         payload = []
         for probe_id, spec in configured.items():
             row = rows.get(probe_id)
             enabled = bool(spec.get("enabled", False))
+            degradation = _degradation_fields(flags.get(probe_id, []))
             if not enabled:
                 payload.append(
                     {
@@ -157,6 +163,7 @@ class PrismRuntime:
                         "fallback_ratio_24h": 0,
                         "mean_lag_seconds": None,
                         "enabled": False,
+                        **degradation,
                     }
                 )
                 continue
@@ -172,6 +179,7 @@ class PrismRuntime:
                         "fallback_ratio_24h": 0,
                         "mean_lag_seconds": None,
                         "enabled": True,
+                        **degradation,
                     }
                 )
                 continue
@@ -186,9 +194,18 @@ class PrismRuntime:
                     "fallback_ratio_24h": float(row.fallback_ratio_24h or 0),
                     "mean_lag_seconds": None if row.mean_lag_seconds is None else float(row.mean_lag_seconds),
                     "enabled": True,
+                    **degradation,
                 }
             )
         return payload
+
+
+def _degradation_fields(success_flags: list[bool]) -> dict:
+    rate = failure_acceleration(success_flags)
+    return {
+        "degradation_rate": None if rate is None else round(rate, 4),
+        "preempt_fallback": should_preempt_fallback(success_flags),
+    }
 
 
 def run_async(coro):  # type: ignore[no-untyped-def]

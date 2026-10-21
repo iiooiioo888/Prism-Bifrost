@@ -6,7 +6,9 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 
-from prism.db.models import CanonicalEvent, Entity, EntityAlias
+from prism.db.models import CanonicalEvent, Entity, EntityAlias, ProbeRun
+from prism.db.session import session_scope
+from prism.demo.commerce import seed_commerce
 from prism.raven.base import RawItem
 from prism.runtime import PrismRuntime
 
@@ -152,14 +154,39 @@ def build_story(now: datetime) -> list[RawItem]:
     return items
 
 
+def ensure_degradation_sample(runtime: PrismRuntime, now: datetime) -> None:
+    """在最終成功之前放入加速失敗樣本，讓健康度仍為健康，同時露出劣化速率。"""
+    with session_scope(runtime.factory) as session:
+        marked = session.scalar(select(func.count()).select_from(ProbeRun).where(ProbeRun.error == "劣化速率樣本"))
+        if marked:
+            return
+        base = now - timedelta(minutes=8)
+        pattern = [False, False, True, True, False, False, False]
+        for index, success in enumerate(pattern):
+            session.add(
+                ProbeRun(
+                    probe_id="rss",
+                    platform="rss",
+                    backend_id="feedparser",
+                    acquisition_mode="live" if success else None,
+                    success=1 if success else 0,
+                    item_count=0,
+                    error=None if success else "劣化速率樣本",
+                    created_at=base + timedelta(minutes=index),
+                )
+            )
+
+
 def seed(runtime: PrismRuntime | None = None, now: datetime | None = None) -> dict[str, int]:
     runtime = runtime or PrismRuntime()
     moment = now or datetime.now(timezone.utc)
+    commerce = seed_commerce(runtime, moment)
+    ensure_degradation_sample(runtime, moment)
     with runtime.factory() as session:
         count = session.scalar(select(func.count()).select_from(CanonicalEvent)) or 0
         session.rollback()
     if count:
-        return {"events": int(count), "seeded": 0}
+        return {"events": int(count), "seeded": 0, **commerce}
     ensure_entities(runtime, moment)
     outcome = runtime.ingest_items(build_story(moment), actor="system:seed", now=moment)
     runtime.record_probe(
@@ -188,4 +215,5 @@ def seed(runtime: PrismRuntime | None = None, now: datetime | None = None) -> di
         "dropped_hash": outcome.report.dropped_hash,
         "near_duplicates": outcome.report.near_duplicates,
         "seeded": 1,
+        **commerce,
     }

@@ -41,9 +41,11 @@ prism watch score <event_id>
 prism herald brief --period day
 prism herald review
 prism horn test
+prism scene list
+prism scene decide --sku DEMO-SKU-01 --node onsale
 ```
 
-`prism horn test` 只做乾跑，不會向外部網址送出。
+`prism horn test` 只做乾跑，不會向外部網址送出。`prism scene decide` 的金額只來自規則引擎，登入態價格不會被採集。
 
 ## 測試
 

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
+from prism.llm.money import REJECTION, contains_prohibited_money
 from prism.llm.validate import (
     ModelOutputInvalid,
     parse_json_with_retry,
@@ -31,7 +32,7 @@ class ModelGateway:
         self.max_retries = max_retries
         self.cache_ttl = timedelta(hours=cache_ttl_hours)
         self.daily_token_budget = daily_token_budget
-        self._cache: dict[str, tuple[datetime, dict[str, Any]]] = {}
+        self._cache: dict[str, tuple[datetime, str, dict[str, Any]]] = {}
         self.tokens_used = 0
         self.calls = 0
 
@@ -51,7 +52,7 @@ class ModelGateway:
         cached = self._cache.get(digest)
         now = datetime.now(timezone.utc)
         if cached and now - cached[0] <= self.cache_ttl:
-            return GatewayResult("cached", cached[1], cached=True)
+            return GatewayResult(cached[1], cached[2], cached=True)
         if self.tokens_used + token_cost > self.daily_token_budget:
             return GatewayResult("budget_exceeded", {"error": "日權杖預算已超過閾值"})
 
@@ -61,6 +62,9 @@ class ModelGateway:
         raw = complete(prompt)
         self.calls += 1
         self.tokens_used += token_cost
+        if contains_prohibited_money(raw):
+            self._cache[digest] = (now, "rejected", dict(REJECTION))
+            return GatewayResult("rejected", dict(REJECTION))
         try:
             payload = parse_json_with_retry(raw, retry if self.max_retries else None, self.max_retries)
         except ModelOutputInvalid as exc:
@@ -99,6 +103,6 @@ class ModelGateway:
             }
         else:
             raise ValueError(f"未知模型用途：{purpose}")
-        self._cache[digest] = (now, normalized)
+        self._cache[digest] = (now, "cached", normalized)
         status = "unsupported" if normalized.get("unsupported") else "ok"
         return GatewayResult(status, normalized)
