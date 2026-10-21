@@ -210,7 +210,10 @@ export interface PricePayload {
   label: string;
   baseline_days: number;
   baseline_required: number;
+  baseline_median: string | null;
+  baseline_median_provisional: boolean;
   confidence_reduced: boolean;
+  uncertainties: string[];
   ranking: RankedOffer[];
   withheld: { platform: string; reason: string; price_basis: string; match_band: string }[];
   abstain: {

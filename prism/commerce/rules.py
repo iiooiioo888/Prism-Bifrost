@@ -25,6 +25,7 @@ class Adjustment:
     label: str
     exclusive_group: str | None = None
     priority: int = 0
+    eligibility: str = "confirmed"
 
 
 @dataclass(frozen=True)
@@ -40,11 +41,12 @@ class AppliedStep:
 class SolveResult:
     payable: Decimal
     steps: tuple[AppliedStep, ...]
+    withheld: tuple[Adjustment, ...] = ()
 
 
 def price_protection(*, page_list_price_dropped: bool, cause: str) -> bool:
-    """價保只看頁面標價是否下降。補貼、券與紅包不構成價保。"""
-    if cause in EXCLUDED_PROTECTION_CAUSES:
+    """價保只看頁面標價是否下降。補貼、券與紅包不構成價保。排除條款未解析時不成立。"""
+    if cause in EXCLUDED_PROTECTION_CAUSES or cause == "unparsed":
         return False
     return bool(page_list_price_dropped) and cause == "page_list_price"
 
@@ -62,12 +64,15 @@ def solve(
     adjustments: list[Adjustment],
     declared_order: list[str] | None = None,
 ) -> SolveResult:
+    _check_eligibility(adjustments)
     if declared_order is not None:
         assert_declared_order(declared_order, adjustments)
+    withheld = tuple(item for item in adjustments if item.eligibility == "unknown")
+    applicable = [item for item in adjustments if item.eligibility == "confirmed"]
     payable = money(list_price)
     steps: list[AppliedStep] = []
     for layer in CANONICAL_PRICE_ORDER:
-        chosen = _resolve_layer([item for item in adjustments if item.layer == layer], payable)
+        chosen = _resolve_layer([item for item in applicable if item.layer == layer], payable)
         for adjustment in chosen:
             base = payable
             deduction = min(_benefit(base, adjustment), base)
@@ -82,7 +87,13 @@ def solve(
                     payable_after=payable,
                 )
             )
-    return SolveResult(payable=payable, steps=tuple(steps))
+    return SolveResult(payable=payable, steps=tuple(steps), withheld=withheld)
+
+
+def _check_eligibility(adjustments: list[Adjustment]) -> None:
+    for adjustment in adjustments:
+        if adjustment.eligibility not in {"confirmed", "unknown"}:
+            raise RuleOrderError("優惠資格只能是已確認或無法確認")
 
 
 def assert_declared_order(declared: list[str], adjustments: list[Adjustment]) -> None:

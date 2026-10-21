@@ -23,6 +23,13 @@ class RawItem:
     probe_id: str
     content_hash: str
     source_type: str = "web"
+    # 以下欄位只留給場景消費。採集與歸併忽略它們，不據此建立 SKU 或改寫事件。
+    sku_code: str | None = None
+    platform_listing_id: str | None = None
+    coupon_stack: tuple[str, ...] | None = None
+    price_valid_until: str | None = None
+    price_protection_covers: str | None = None
+    observed_list_price: str | None = None
 
 
 @dataclass

@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select
 
+from prism.commerce.baseline import daily_baseline
 from prism.commerce.decide import OfferInput, decide_now
 from prism.commerce.money import unit
 from prism.commerce.rules import Adjustment, RuleOrderError, price_protection, solve
 from prism.commerce.service import CommerceService
-from prism.db.models import CanonicalEvent
+from prism.db.models import CanonicalEvent, Sku, SkuOffer
 from prism.db.session import session_scope
 from prism.demo.commerce import SKU_CODE, seed_commerce
 from prism.demo.seed import seed
@@ -359,6 +360,9 @@ def test_scene_api_exposes_reviewable_decision(runtime, client):
     payload = decisions.json()["items"][0]["payload"]
     assert payload["ranking"][0]["platform"] == "乙店"
     assert payload["ranking"][0]["payable"] == "198.00"
+    assert payload["baseline_median"] == "200.00"
+    assert payload["baseline_median_provisional"] is True
+    assert any("中位數" in line for line in payload["abstain"]["confirmations"])
     probes = client.get("/api/v1/health/probes", headers=headers).json()["items"]
     rss = next(item for item in probes if item["probe_id"] == "rss")
     assert rss["status"] == "healthy"
@@ -386,3 +390,88 @@ def test_scene_api_exposes_reviewable_decision(runtime, client):
     with session_scope(runtime.factory) as session:
         events = int(session.scalar(select(func.count()).select_from(CanonicalEvent)) or 0)
     assert events > 0
+
+
+def test_unknown_subsidy_is_left_unapplied():
+    result = solve(
+        unit("250"),
+        [
+            Adjustment("item", "amount", unit("20"), "單品券"),
+            Adjustment("national_subsidy", "percent", unit("0.10"), "國補", eligibility="unknown"),
+        ],
+    )
+    assert result.payable == Decimal("230.00")
+    assert [item.label for item in result.withheld] == ["國補"]
+
+
+def test_unparsed_price_protection_is_not_scored():
+    payload = decide_now(
+        offers=[
+            _offer(
+                offer_id="p",
+                platform="甲店",
+                list_price=unit("100"),
+                page_list_price_dropped=True,
+                protection_cause="unparsed",
+                match_confidence=unit("0.96"),
+                inventory_reliability=unit("0.2"),
+                after_sales=unit("0.3"),
+            )
+        ],
+        node="onsale",
+        scene_id="double11",
+        sku_code=SKU_CODE,
+        sku_title="示範標準化商品",
+        weights=WEIGHTS,
+        baseline_days=3,
+        baseline_required=14,
+        match_high=unit("0.85"),
+        match_medium=unit("0.65"),
+    )
+    assert payload["ranking"][0]["price_protection"] is False
+    assert payload["ranking"][0]["score"] == "0.485"
+    assert any("未能完整解析" in line for line in payload["uncertainties"])
+
+
+def test_daily_price_median_groups_each_day_first():
+    days, median = daily_baseline(
+        [
+            (date(2026, 10, 19), unit("10")),
+            (date(2026, 10, 19), unit("30")),
+            (date(2026, 10, 20), unit("40")),
+        ]
+    )
+    assert days == 2
+    assert median == Decimal("30.00")
+
+
+def test_ingest_ignores_optional_price_fields(runtime):
+    now = datetime(2026, 10, 21, 9, tzinfo=timezone.utc)
+    runtime.ingest_items(
+        [
+            RawItem(
+                source_url="https://port-authority.example/notices/price-field",
+                upstream_timestamp=now,
+                collected_at=now,
+                platform="rss",
+                title="一則公告",
+                body="北境港務局發布與價格欄位無關的公開公告。",
+                author="北境港務局",
+                language="zh",
+                acquisition_mode="live",
+                raw_ref="raw-price-field",
+                probe_id="rss",
+                content_hash="hash-price-field",
+                sku_code="SHOULD-NOT-CREATE",
+                platform_listing_id="L1",
+                coupon_stack=("national_subsidy",),
+                price_valid_until="2026-11-11",
+                price_protection_covers="unknown",
+                observed_list_price="10.00",
+            )
+        ],
+        now=now,
+    )
+    with session_scope(runtime.factory) as session:
+        assert int(session.scalar(select(func.count()).select_from(Sku)) or 0) == 0
+        assert int(session.scalar(select(func.count()).select_from(SkuOffer)) or 0) == 0

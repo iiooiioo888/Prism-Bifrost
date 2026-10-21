@@ -68,9 +68,11 @@ function Decision({ payload }: { payload: PricePayload }) {
       <h3 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>{payload.sku_title}</h3>
       <p>
         {payload.label}
-        {payload.confidence_reduced
-          ? `。歷史價格基線 ${payload.baseline_days} 日，未滿 ${payload.baseline_required} 日，結論置信度降低`
-          : ""}
+        {payload.baseline_median
+          ? `。歷史價格基線 ${payload.baseline_days} 日，中位數 ${payload.baseline_median}${payload.baseline_median_provisional ? "，尚未滿期，不得當作穩定基線" : ""}`
+          : payload.confidence_reduced
+            ? `。歷史價格基線 ${payload.baseline_days} 日，未滿 ${payload.baseline_required} 日，結論置信度降低`
+            : ""}
         。節點 {payload.node}，路徑 {payload.path === "fast" ? "快速" : "慢速"}。
       </p>
       <table>

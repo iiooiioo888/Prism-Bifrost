@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from sqlalchemy import func, select
 
+from prism.commerce.baseline import as_date, daily_baseline
 from prism.commerce.decide import OfferInput, decide_now, refresh_baseline
 from prism.commerce.money import unit
 from prism.commerce.rules import Adjustment
@@ -118,14 +119,17 @@ class CommerceService:
             )
 
     def baseline_days(self, sku_code: str) -> int:
+        days, _median = self.baseline_snapshot(sku_code)
+        return days
+
+    def baseline_snapshot(self, sku_code: str) -> tuple[int, Decimal | None]:
         with session_scope(self.runtime.factory) as session:
             sku = session.scalar(select(Sku).where(Sku.code == sku_code))
             if sku is None:
-                return 0
-            days = session.scalars(
-                select(PriceObservation.observed_on).where(PriceObservation.sku_id == sku.sku_id)
-            ).all()
-        return len(set(days))
+                return 0, None
+            rows = session.scalars(select(PriceObservation).where(PriceObservation.sku_id == sku.sku_id)).all()
+            observations = [(as_date(row.observed_on), unit(row.list_price)) for row in rows]
+        return daily_baseline(observations)
 
     def decide(self, *, scene_id: str, sku_code: str, node: str, path: str) -> dict:
         scene = self.scene(scene_id)
@@ -142,7 +146,7 @@ class CommerceService:
             offers = [_offer_input(row) for row in rows]
             sku_title = sku.title
             sku_id = sku.sku_id
-        days = self.baseline_days(sku_code)
+        days, median = self.baseline_snapshot(sku_code)
         runner = decide_now if path == "fast" else refresh_baseline
         payload = runner(
             offers=offers,
@@ -155,6 +159,7 @@ class CommerceService:
             baseline_required=scene.baseline_days_required,
             match_high=unit(scene.sku_match_high),
             match_medium=unit(scene.sku_match_medium),
+            daily_prices=[] if median is None else [median],
         )
         moment = datetime.now(timezone.utc)
         with session_scope(self.runtime.factory) as session:
@@ -221,4 +226,5 @@ def _adjustment(raw: dict) -> Adjustment:
         label=str(raw.get("label") or raw["layer"]),
         exclusive_group=raw.get("exclusive_group"),
         priority=int(raw.get("priority") or 0),
+        eligibility=str(raw.get("eligibility") or "confirmed"),
     )

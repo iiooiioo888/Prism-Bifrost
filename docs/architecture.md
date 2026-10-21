@@ -30,3 +30,5 @@
 開發用權杖寫在 `config/prism.yaml`，只供本地驗收。正式環境改由密鑰管理注入，不沿用檔案裡的值。
 
 場景掛在這條流水線上，不另開管道。`config/scenes.yaml` 用融合方式區分規範事件與標準化 SKU。SKU 的報價進 `sku_offer`，實付與排序進 `price_decision`，兩者都不寫 `canonical_event`。優惠順序、模型禁產金額與棄權分級都在程式結構裡，不靠提示詞。
+
+雙11的規則引擎在 `prism/commerce/`，不在 `prism/weave/`。事件指標仍只有 `persist_ready` 能寫。價格基線中位數由 `prism/commerce/baseline.py` 計算，不寫入 `event_metrics`。`RawItem` 上的 SKU 與價格欄位是可選介面，採集與歸併忽略它們。

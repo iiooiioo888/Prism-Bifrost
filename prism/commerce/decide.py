@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+from prism.commerce.baseline import median_money
 from prism.commerce.money import money, money_text, score_text, unit
 from prism.commerce.rules import Adjustment, price_protection, match_band, solve
 
@@ -56,11 +57,13 @@ def decide_offers(
     baseline_required: int,
     match_high: Decimal,
     match_medium: Decimal,
+    daily_prices: list[Decimal] | None = None,
 ) -> dict:
     if path not in {"fast", "slow"}:
         raise ValueError("路徑只能是 fast 或 slow")
     solved: list[dict] = []
     withheld: list[dict] = []
+    uncertainties: list[str] = []
     for offer in offers:
         band = match_band(offer.match_confidence, high=match_high, medium=match_medium)
         comparable = offer.price_basis == "guest" and band != "low" and offer.list_price is not None
@@ -69,6 +72,10 @@ def decide_offers(
             continue
         assert offer.list_price is not None
         result = solve(offer.list_price, list(offer.adjustments))
+        for adjustment in result.withheld:
+            uncertainties.append(f"{offer.platform} 的{adjustment.label}資格無法確認，未套用該層")
+        if offer.protection_cause == "unparsed":
+            uncertainties.append(f"{offer.platform} 的價保排除條款未能完整解析，不把價保計入排序")
         protected = price_protection(
             page_list_price_dropped=offer.page_list_price_dropped,
             cause=offer.protection_cause,
@@ -87,7 +94,18 @@ def decide_offers(
     _assign_scores(solved, weights)
     solved.sort(key=lambda item: (-item["score"], item["payable"], item["offer"].platform))
     ranking = [_public_rank(item) for item in solved]
-    abstain = _abstain(solved, withheld, baseline_days, baseline_required)
+    median = median_money(list(daily_prices or []))
+    median_text = None if median is None else money_text(median)
+    provisional = baseline_days < baseline_required or median is None
+    abstain = _abstain(
+        solved,
+        withheld,
+        baseline_days,
+        baseline_required,
+        uncertainties,
+        median_text,
+        provisional,
+    )
     _guard_statements(abstain["executable"])
     payload: dict = {
         "scene_id": scene_id,
@@ -98,7 +116,10 @@ def decide_offers(
         "label": "規則引擎產出，待人工確認",
         "baseline_days": baseline_days,
         "baseline_required": baseline_required,
+        "baseline_median": median_text,
+        "baseline_median_provisional": provisional,
         "confidence_reduced": baseline_days < baseline_required,
+        "uncertainties": uncertainties,
         "ranking": ranking,
         "withheld": withheld,
         "abstain": abstain,
@@ -191,7 +212,15 @@ def _withheld(offer: OfferInput, band: str) -> dict:
     }
 
 
-def _abstain(solved: list[dict], withheld: list[dict], baseline_days: int, baseline_required: int) -> dict:
+def _abstain(
+    solved: list[dict],
+    withheld: list[dict],
+    baseline_days: int,
+    baseline_required: int,
+    uncertainties: list[str],
+    baseline_median: str | None,
+    median_provisional: bool,
+) -> dict:
     executable: list[dict] = []
     confirmations: list[str] = []
     risks: list[str] = []
@@ -237,9 +266,15 @@ def _abstain(solved: list[dict], withheld: list[dict], baseline_days: int, basel
         else:
             confirmations.insert(0, ranking_statement)
     if baseline_days < baseline_required:
-        confirmations.append(
-            f"歷史價格基線 {baseline_days} 日，未滿 {baseline_required} 日，結論置信度降低"
-        )
+        if baseline_median and median_provisional:
+            confirmations.append(
+                f"歷史價格基線 {baseline_days} 日，中位數 {baseline_median}，未滿 {baseline_required} 日，此中位數不得當作穩定基線"
+            )
+        else:
+            confirmations.append(
+                f"歷史價格基線 {baseline_days} 日，未滿 {baseline_required} 日，結論置信度降低"
+            )
+    confirmations.extend(uncertainties)
     for item in withheld:
         risks.append(f"{item['platform']}：{item['reason']}")
     return {
