@@ -55,6 +55,17 @@ export const api = {
   probes: () => request<{ items: ProbeHealth[] }>("/api/v1/health/probes"),
   proxies: () => request<ProxyPoolStatus>("/api/v1/health/proxies"),
   scenes: () => request<{ items: SceneConfig[] }>("/api/v1/scenes"),
+  marketplaces: () => request<{ items: Marketplace[] }>("/api/v1/marketplaces"),
+  readListing: (sceneId: string, url: string) =>
+    request<ProductListing>(`/api/v1/scenes/${encodeURIComponent(sceneId)}/listings`, {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
+  monitorProduct: (sceneId: string, query: string) =>
+    request<ProductMonitorReport>(`/api/v1/scenes/${encodeURIComponent(sceneId)}/monitors`, {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    }),
   sceneDecisions: (sceneId: string) => request<{ items: SceneDecision[] }>(`/api/v1/scenes/${sceneId}/decisions`),
   productImages: (sceneId: string, skuCode: string) =>
     request<{ sku_code: string; items: ProductImage[] }>(
@@ -199,6 +210,72 @@ export interface ProbeHealth {
   enabled: boolean;
   degradation_rate: number | null;
   preempt_fallback: boolean;
+}
+
+export interface MonitorItem {
+  title: string | null;
+  source_url: string | null;
+  list_price: string | null;
+  status: "priced" | "withheld" | "blocked" | "empty";
+  detail: string;
+  sku_code?: string | null;
+  match_confidence?: string | null;
+  match_band?: "high" | "medium" | "low" | null;
+}
+
+export interface PriceDropNotice {
+  sku_code: string;
+  source_url: string;
+  previous_price: string;
+  list_price: string;
+  detail: string;
+}
+
+export interface MonitorPlatform {
+  platform: string;
+  label: string;
+  status: "priced" | "withheld" | "blocked" | "empty";
+  detail: string;
+  items: MonitorItem[];
+}
+
+export interface ProductMonitorReport {
+  monitor_id: string;
+  run_id: string;
+  scene_id: string;
+  query: string;
+  sku_code: string;
+  match_confidence: string;
+  event_created: boolean;
+  detail: string;
+  schedules?: string[];
+  official?: { configured: boolean; detail: string };
+  alerts?: PriceDropNotice[];
+  recommendations?: Array<{ label?: string; abstain?: { executable?: Array<{ statement: string }> } }>;
+  platforms: MonitorPlatform[];
+}
+
+export interface Marketplace {
+  platform: string;
+  label: string;
+  hosts: string[];
+  search_host: string;
+}
+
+export interface ProductListing {
+  offer_id: string;
+  scene_id: string;
+  platform: string;
+  label: string;
+  sku_code: string;
+  title: string;
+  source_url: string;
+  list_price: string | null;
+  price_basis: "guest" | "logged_in";
+  match_confidence: string;
+  stored: boolean;
+  event_created: boolean;
+  detail: string;
 }
 
 export interface SceneConfig {

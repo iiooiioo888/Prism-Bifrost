@@ -156,6 +156,42 @@ paths:
       responses:
         "200":
           description: 代理啟用狀態。拒絕後不換 IP
+  /marketplaces:
+    get:
+      summary: 商品平台
+      responses:
+        "200":
+          description: 只含天貓、淘寶、拼多多、京東、轉轉
+  /scenes/{scene_id}/monitors:
+    post:
+      summary: 依商品名稱到五個平台監測公開標價
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 各平台的公開標價或停止原因。不建立規範事件 }
+        "404": { description: 場景不是商品監測 }
+        "422": { description: 商品名稱無法用於監測 }
+  /scenes/{scene_id}/watches/run:
+    post:
+      summary: 跑到期的商品名稱監測與已貼上的商品頁
+      responses:
+        "200": { description: 手動之外，補跑每天與標價變動後的再查 }
+  /scenes/{scene_id}/listings:
+    post:
+      summary: 讀取商品頁並寫入 SKU 報價
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 商品報價。不建立規範事件 }
+        "403": { description: 站點規則拒絕、robots 禁止或目標拒絕 }
+        "404": { description: 場景不是商品監測 }
+        "422": { description: 不是這五個平台的商品頁，或頁面沒有公開商品資料 }
   /scenes:
     get:
       summary: 場景配置

@@ -39,7 +39,7 @@ class CommerceService:
         scene_id: str,
         platform: str,
         source_url: str,
-        upstream_timestamp: datetime,
+        upstream_timestamp: datetime | None,
         collected_at: datetime,
         acquisition_mode: str,
         list_price: Decimal | None,

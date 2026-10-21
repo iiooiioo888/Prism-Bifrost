@@ -1,10 +1,22 @@
-"""robots.txt 的字面前綴規則。只判斷允不允許，不嘗試繞過。"""
+"""robots.txt 規則。只判斷允不允許，不嘗試繞過。"""
 
 from __future__ import annotations
 
+import re
+from urllib.parse import urlsplit
+
+
+def robots_target(url: str) -> str:
+    """要比對的路徑。查詢字串一併納入，才能認得禁止 ? 的規則。"""
+    parsed = urlsplit(url)
+    path = parsed.path or "/"
+    if parsed.query:
+        return f"{path}?{parsed.query}"
+    return path
+
 
 def robots_allows(text: str, path: str, agent: str = "prismbot") -> bool:
-    """最長前綴勝出；同長度時 Allow 勝出。空的 Disallow 不擋任何路徑。"""
+    """最長規則勝出；同長度時 Allow 勝出。空的 Disallow 不擋任何路徑。* 與結尾 $ 依字面規則展開。"""
     groups = _groups(text)
     chosen = _rules_for(groups, agent.lower())
     if chosen is None:
@@ -16,14 +28,25 @@ def robots_allows(text: str, path: str, agent: str = "prismbot") -> bool:
         target = "/" + target
     best = -1
     allowed = True
-    for directive, prefix in chosen:
-        if not prefix or not target.startswith(prefix):
+    for directive, pattern in chosen:
+        if not _matches(pattern, target):
             continue
-        length = len(prefix)
+        length = len(pattern)
         if length > best or (length == best and directive == "allow"):
             best = length
             allowed = directive == "allow"
     return allowed
+
+
+def _matches(pattern: str, target: str) -> bool:
+    if not pattern:
+        return False
+    anchored = pattern.endswith("$")
+    body = pattern[:-1] if anchored else pattern
+    expression = "".join(".*" if char == "*" else re.escape(char) for char in body)
+    if anchored:
+        expression += "$"
+    return re.match(expression, target) is not None
 
 
 def _groups(text: str) -> list[tuple[str, list[tuple[str, str]]]]:

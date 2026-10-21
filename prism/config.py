@@ -42,6 +42,7 @@ class Settings:
     site_rules: dict[str, Any]
     scenes: dict[str, Scene]
     proxies: ProxyPoolConfig
+    official: dict[str, Any]
 
     @property
     def timezone(self) -> str:
@@ -97,6 +98,7 @@ def load_settings(config_path: Path | None = None) -> Settings:
         site_rules=_load_yaml(config_dir / "site_rules.yaml"),
         scenes=load_scenes(_load_yaml(config_dir / "scenes.yaml")),
         proxies=load_proxy_pool(_load_yaml(config_dir / "proxies.yaml")),
+        official=app_config.get("official", {}) if isinstance(app_config.get("official", {}), dict) else {},
     )
 
 

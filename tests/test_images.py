@@ -56,6 +56,11 @@ def test_robots_longest_prefix_and_named_agent():
     named = "User-agent: *\nDisallow: /\n\nUser-agent: PrismBot\nAllow: /catalog\n"
     assert robots_allows(named, "/catalog/x")
     assert not robots_allows(named, "/other", agent="someone-else")
+    wildcard = "User-agent: *\nAllow: /\nDisallow: /*?*\n"
+    assert robots_allows(wildcard, "/search")
+    assert not robots_allows(wildcard, "/search?keyword=cup")
+    assert not robots_allows("User-agent: *\nDisallow: /private$\n", "/private")
+    assert robots_allows("User-agent: *\nDisallow: /private$\n", "/private/more")
 
 
 def test_parser_keeps_marked_images_only():

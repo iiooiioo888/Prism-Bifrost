@@ -12,6 +12,9 @@ from sqlalchemy import select
 from prism.db.models import AlertRow, CanonicalEvent, EventAssessment, EventMention, MergeSuggestion
 from prism.db.session import session_scope
 from prism.commerce.images import ProductImageService
+from prism.commerce.marketplaces import ListingError, collect_listing, marketplace_catalog
+from prism.commerce.monitor import monitor_product
+from prism.commerce.schedule import run_due
 from prism.commerce.service import CommerceError, CommerceService
 from prism.raven.compliance import ComplianceError
 from prism.raven.images import ImageCrawlError
@@ -335,6 +338,59 @@ def scene_list() -> None:
     for scene in runtime.settings.scenes.values():
         rows.append([scene.scene_id, scene.title, scene.fusion, scene.time_sensitivity])
     _print_table(["場景", "名稱", "融合", "時間敏感度"], rows)
+
+
+@scene_app.command("monitor")
+def scene_monitor(
+    query: str = typer.Option(..., "--query", help="要監控的商品名稱"),
+    scene: str = typer.Option("double11", "--scene", help="商品場景"),
+) -> None:
+    """到天貓、淘寶、拼多多、京東、轉轉讀這個商品的公開標價。"""
+    runtime = _runtime()
+    try:
+        result = asyncio.run(monitor_product(runtime, scene_id=scene, query=query))
+    except (ListingError, CommerceError, ComplianceError, AccessDenied, ProxyPoolExhausted) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+    typer.echo(result["detail"])
+    for platform in result["platforms"]:
+        prices = [item["list_price"] for item in platform["items"] if item.get("list_price")]
+        shown = "、".join(prices) if prices else platform["status"]
+        typer.echo(f"{platform['label']}  {shown}  {platform['detail']}")
+
+
+@scene_app.command("due")
+def scene_due(scene: str = typer.Option("double11", "--scene", help="商品場景")) -> None:
+    """跑已經到期的商品監測：每天一次，以及標價變動後的再查。"""
+    runtime = _runtime()
+    result = asyncio.run(run_due(runtime, scene_id=scene))
+    typer.echo(f"已跑 {result['ran']} 次")
+    for item in result["results"]:
+        typer.echo(item.get("query") or item.get("source_url") or item.get("detail"))
+
+
+@scene_app.command("listing")
+def scene_listing(
+    url: str = typer.Option(..., "--url", help="五個平台之一的商品頁"),
+    scene: str = typer.Option("double11", "--scene", help="商品場景"),
+) -> None:
+    """讀取商品頁並寫入 SKU 報價。不建立規範事件。"""
+    runtime = _runtime()
+    try:
+        result = asyncio.run(collect_listing(runtime, scene_id=scene, url=url))
+    except (ListingError, CommerceError, ComplianceError, AccessDenied, ProxyPoolExhausted) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+    price = result["list_price"] or "沒有公開標價"
+    typer.echo(f"{result['label']}  {result['sku_code']}  {result['title']}  {price}")
+    typer.echo(result["detail"])
+
+
+@scene_app.command("platforms")
+def scene_platforms() -> None:
+    """商品平台只含天貓、淘寶、拼多多、京東、轉轉。"""
+    rows = [[item["label"], item["platform"], ", ".join(item["hosts"])] for item in marketplace_catalog()]
+    _print_table(["平台", "識別", "商品頁網域"], rows)
 
 
 @scene_app.command("decide")
