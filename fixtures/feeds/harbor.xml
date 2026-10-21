@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>北境港務公報</title>
+    <link>https://port-authority.example/feed</link>
+    <description>虛構的公開港務公告，供稜鏡第一階段驗收。</description>
+    <item>
+      <title>北境港務局發布臨時航道管制</title>
+      <link>https://port-authority.example/notices/NB-1842</link>
+      <pubDate>Tue, 20 Oct 2026 06:00:00 GMT</pubDate>
+      <author>北境港務局</author>
+      <description>北境港務局依據公告 NB-1842，自今日六時起對北境航道實施臨時管制，引航船舶須改走外側備援航道。管制原因為航標更換，預計十二小時後恢復。此為公開港務公告。</description>
+    </item>
+  </channel>
+</rss>

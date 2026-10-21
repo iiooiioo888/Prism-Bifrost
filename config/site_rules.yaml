@@ -1,0 +1,34 @@
+# 站點規則檔。採集前強制檢查。未列名的網域預設拒絕。
+# 本檔不提供、也不接受任何繞過登入牆、付費牆或驗證碼的設定。
+defaults:
+  allow_fetch: false
+  respect_robots: true
+
+blocked_path_fragments:
+  - /login
+  - /signin
+  - /signup
+  - /paywall
+  - /captcha
+  - /challenge
+  - /checkout
+
+sites:
+  - domain: port-authority.example
+    allow_fetch: true
+    respect_robots: true
+  - domain: marine-wire.example
+    allow_fetch: true
+    respect_robots: true
+  - domain: gazette.example
+    allow_fetch: true
+    respect_robots: true
+  - domain: harbor-echo.example
+    allow_fetch: true
+    respect_robots: true
+  - domain: forum.example
+    allow_fetch: true
+    respect_robots: true
+  - domain: feeds.example
+    allow_fetch: true
+    respect_robots: true
