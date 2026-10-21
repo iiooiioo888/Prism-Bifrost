@@ -12,6 +12,7 @@ from sqlalchemy import select
 from prism.db.models import AlertRow, CanonicalEvent, EventAssessment, EventMention, MergeSuggestion
 from prism.db.session import session_scope
 from prism.commerce.images import ProductImageService
+from prism.commerce.marketplaces import ListingError, collect_listing, marketplace_catalog
 from prism.commerce.service import CommerceError, CommerceService
 from prism.raven.compliance import ComplianceError
 from prism.raven.images import ImageCrawlError
@@ -335,6 +336,30 @@ def scene_list() -> None:
     for scene in runtime.settings.scenes.values():
         rows.append([scene.scene_id, scene.title, scene.fusion, scene.time_sensitivity])
     _print_table(["場景", "名稱", "融合", "時間敏感度"], rows)
+
+
+@scene_app.command("listing")
+def scene_listing(
+    url: str = typer.Option(..., "--url", help="五個平台之一的商品頁"),
+    scene: str = typer.Option("double11", "--scene", help="商品場景"),
+) -> None:
+    """讀取商品頁並寫入 SKU 報價。不建立規範事件。"""
+    runtime = _runtime()
+    try:
+        result = asyncio.run(collect_listing(runtime, scene_id=scene, url=url))
+    except (ListingError, CommerceError, ComplianceError, AccessDenied, ProxyPoolExhausted) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+    price = result["list_price"] or "沒有公開標價"
+    typer.echo(f"{result['label']}  {result['sku_code']}  {result['title']}  {price}")
+    typer.echo(result["detail"])
+
+
+@scene_app.command("platforms")
+def scene_platforms() -> None:
+    """商品平台只含天貓、淘寶、拼多多、京東、轉轉。"""
+    rows = [[item["label"], item["platform"], ", ".join(item["hosts"])] for item in marketplace_catalog()]
+    _print_table(["平台", "識別", "商品頁網域"], rows)
 
 
 @scene_app.command("decide")

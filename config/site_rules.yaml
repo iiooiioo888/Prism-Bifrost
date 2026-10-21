@@ -35,3 +35,21 @@ sites:
   - domain: catalog.example
     allow_fetch: true
     respect_robots: true
+  - domain: detail.tmall.com
+    allow_fetch: true
+    respect_robots: true
+  - domain: item.taobao.com
+    allow_fetch: true
+    respect_robots: true
+  - domain: mobile.yangkeduo.com
+    allow_fetch: true
+    respect_robots: true
+  - domain: item.jd.com
+    allow_fetch: true
+    respect_robots: true
+  - domain: m.zhuanzhuan.com
+    allow_fetch: true
+    respect_robots: true
+  - domain: www.zhuanzhuan.com
+    allow_fetch: true
+    respect_robots: true

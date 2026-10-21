@@ -31,9 +31,17 @@ scenes:
     retention_days: 90
     dimensions:
       subjects:
-        - 標準化 SKU
+        - 天貓商品
+        - 淘寶商品
+        - 拼多多商品
+        - 京東商品
+        - 轉轉商品
       signal_domains:
-        - public_price_page
+        - tmall
+        - taobao
+        - pinduoduo
+        - jd
+        - zhuanzhuan
       triggers:
         - presale
         - onsale

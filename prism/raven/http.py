@@ -14,7 +14,13 @@ class PayloadTooLarge(RuntimeError):
     """目標有回應，但本體超過上限。這不是出口故障，不得換 IP 再抓。"""
 
 
-async def fetch_public_bytes(url: str, proxy_url: str | None) -> tuple[int, bytes]:
+async def fetch_public_bytes(
+    url: str,
+    proxy_url: str | None,
+    *,
+    accept: str | None = None,
+    user_agent: str | None = None,
+) -> tuple[int, bytes]:
     timeout = httpx.Timeout(10.0, connect=5.0)
     try:
         async with httpx.AsyncClient(
@@ -23,8 +29,8 @@ async def fetch_public_bytes(url: str, proxy_url: str | None) -> tuple[int, byte
             follow_redirects=False,
             trust_env=False,
             headers={
-                "User-Agent": USER_AGENT,
-                "Accept": "text/html,image/png,image/jpeg,image/webp,image/gif;q=0.9",
+                "User-Agent": user_agent or USER_AGENT,
+                "Accept": accept or "text/html,image/png,image/jpeg,image/webp,image/gif;q=0.9",
             },
         ) as client:
             async with client.stream("GET", url) as response:

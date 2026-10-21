@@ -156,6 +156,25 @@ paths:
       responses:
         "200":
           description: 代理啟用狀態。拒絕後不換 IP
+  /marketplaces:
+    get:
+      summary: 商品平台
+      responses:
+        "200":
+          description: 只含天貓、淘寶、拼多多、京東、轉轉
+  /scenes/{scene_id}/listings:
+    post:
+      summary: 讀取商品頁並寫入 SKU 報價
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 商品報價。不建立規範事件 }
+        "403": { description: 站點規則拒絕、robots 禁止或目標拒絕 }
+        "404": { description: 場景不是商品監測 }
+        "422": { description: 不是這五個平台的商品頁，或頁面沒有公開商品資料 }
   /scenes:
     get:
       summary: 場景配置

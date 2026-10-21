@@ -55,6 +55,12 @@ export const api = {
   probes: () => request<{ items: ProbeHealth[] }>("/api/v1/health/probes"),
   proxies: () => request<ProxyPoolStatus>("/api/v1/health/proxies"),
   scenes: () => request<{ items: SceneConfig[] }>("/api/v1/scenes"),
+  marketplaces: () => request<{ items: Marketplace[] }>("/api/v1/marketplaces"),
+  readListing: (sceneId: string, url: string) =>
+    request<ProductListing>(`/api/v1/scenes/${encodeURIComponent(sceneId)}/listings`, {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
   sceneDecisions: (sceneId: string) => request<{ items: SceneDecision[] }>(`/api/v1/scenes/${sceneId}/decisions`),
   productImages: (sceneId: string, skuCode: string) =>
     request<{ sku_code: string; items: ProductImage[] }>(
@@ -199,6 +205,28 @@ export interface ProbeHealth {
   enabled: boolean;
   degradation_rate: number | null;
   preempt_fallback: boolean;
+}
+
+export interface Marketplace {
+  platform: string;
+  label: string;
+  hosts: string[];
+}
+
+export interface ProductListing {
+  offer_id: string;
+  scene_id: string;
+  platform: string;
+  label: string;
+  sku_code: string;
+  title: string;
+  source_url: string;
+  list_price: string | null;
+  price_basis: "guest" | "logged_in";
+  match_confidence: string;
+  stored: boolean;
+  event_created: boolean;
+  detail: string;
 }
 
 export interface SceneConfig {

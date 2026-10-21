@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type PricePayload, type ProductImage, type SceneConfig } from "../api";
+import { api, currentRole, type PricePayload, type ProductImage, type ProductListing, type SceneConfig } from "../api";
 import { Loading, useAsync } from "../components";
 
 const ORDER_TEXT: Record<string, string> = {
@@ -12,23 +12,75 @@ const ORDER_TEXT: Record<string, string> = {
 
 export function ScenePage() {
   const scenes = useAsync(() => api.scenes().then((payload) => payload.items), []);
+  const markets = useAsync(() => api.marketplaces().then((payload) => payload.items), []);
   const decisions = useAsync(() => api.sceneDecisions("double11").then((payload) => payload.items), []);
   const images = useAsync(() => api.productImages("double11", "DEMO-SKU-01"), []);
-  if (scenes.loading || decisions.loading || images.loading) return <Loading />;
+  const [url, setUrl] = useState("https://item.jd.com/400.html");
+  const [listing, setListing] = useState<ProductListing | null>(null);
+  const [listingError, setListingError] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (scenes.loading || markets.loading || decisions.loading || images.loading) return <Loading />;
   if (scenes.error) return <div className="error">{scenes.error}</div>;
+  if (markets.error) return <div className="error">{markets.error}</div>;
   if (decisions.error) return <div className="error">{decisions.error}</div>;
   if (images.error) return <div className="error">{images.error}</div>;
   const commerce = scenes.data?.find((scene) => scene.scene_id === "double11");
-  const harbor = scenes.data?.find((scene) => scene.scene_id === "harbor_watch");
   const latest = decisions.data?.[0]?.payload;
   return (
     <section>
-      <h2 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>場景</h2>
+      <h2 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>商品</h2>
       <p style={{ color: "var(--muted)" }}>
-        場景掛在同一條流水線上。港務觀測仍歸併成規範事件；雙11的錨點是標準化 SKU，各平台頁面是可選方案，不會被併成同一事件。
+        只讀天貓、淘寶、拼多多、京東、轉轉的商品頁，寫入 SKU 報價。不建立規範事件，也不做事件監測。
       </p>
-      <div className="grid two">
-        {harbor && <SceneCard scene={harbor} />}
+      <article className="panel">
+        <h3 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>商品平台</h3>
+        <p style={{ color: "var(--muted)" }}>
+          登入牆、驗證碼與 robots 禁止的路徑不寫價格。重新導向不跟隨。目標拒絕時停止，不會換 IP。頁面上的登入連結不會被當成可以繞過的入口。
+        </p>
+        <table>
+          <thead>
+            <tr><th>平台</th><th>商品頁網域</th></tr>
+          </thead>
+          <tbody>
+            {markets.data?.map((item) => (
+              <tr key={item.platform}>
+                <td>{item.label}</td>
+                <td>{item.hosts.join("、")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {currentRole() !== "viewer" && (
+          <form
+            style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setBusy(true);
+              setListingError("");
+              try {
+                setListing(await api.readListing("double11", url));
+              } catch (caught) {
+                setListing(null);
+                setListingError(caught instanceof Error ? caught.message : "讀取失敗");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <label htmlFor="product-url">商品頁</label>
+            <input id="product-url" value={url} onChange={(event) => setUrl(event.target.value)} style={{ minWidth: 360 }} />
+            <button className="btn" type="submit" disabled={busy}>{busy ? "讀取中" : "讀取商品"}</button>
+          </form>
+        )}
+        {listingError && <div className="error" style={{ marginTop: 12 }}>{listingError}</div>}
+        {listing && (
+          <p style={{ marginTop: 12 }}>
+            {listing.label} {listing.sku_code} {listing.title}{" "}
+            {listing.list_price ? `標價 ${listing.list_price}` : "沒有寫入標價"}。{listing.detail}
+          </p>
+        )}
+      </article>
+      <div className="grid two" style={{ marginTop: 22 }}>
         {commerce && <SceneCard scene={commerce} />}
       </div>
       <ProductImages items={images.data?.items ?? []} />
