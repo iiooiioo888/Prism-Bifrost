@@ -84,6 +84,10 @@ tr.click:hover td { background: rgba(255,255,255,0.03); cursor: pointer; }
 .confirm { margin-top: 8px; display: grid; gap: 8px; background: var(--panel-2); padding: 10px; border-radius: 10px; }
 .kv { display: grid; grid-template-columns: 140px 1fr; gap: 4px 8px; font-size: 13px; }
 .kv span { color: var(--faint); }
+.product-images { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; }
+.product-images figure { margin: 0; width: 180px; }
+.product-images img { width: 180px; height: 180px; object-fit: contain; background: #f7f4ee; border-radius: 12px; display: block; }
+.product-images figcaption { color: var(--muted); font-size: 12px; margin-top: 6px; word-break: break-all; }
 
 @media (max-width: 960px) {
   .shell { grid-template-columns: 1fr; }

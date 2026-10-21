@@ -13,7 +13,8 @@ class ObjectStore:
 
     def put(self, payload: bytes, hint: str = "") -> str:
         digest = hashlib.sha256(payload).hexdigest()
-        key = f"raw/{digest[:2]}/{digest}"
+        prefix = "images" if hint == "image" else "raw"
+        key = f"{prefix}/{digest[:2]}/{digest}"
         path = self.root / key
         path.parent.mkdir(parents=True, exist_ok=True)
         if not path.exists():
@@ -21,7 +22,9 @@ class ObjectStore:
         return key
 
     def get(self, key: str) -> bytes:
-        path = self.root / key
-        if not path.exists():
+        if not key or ".." in Path(key).parts:
+            raise FileNotFoundError(key)
+        path = (self.root / key).resolve()
+        if not path.is_relative_to(self.root.resolve()) or not path.is_file():
             raise FileNotFoundError(key)
         return path.read_bytes()

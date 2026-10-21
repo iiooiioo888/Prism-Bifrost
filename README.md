@@ -26,13 +26,14 @@ npm install
 npm run dev
 ```
 
-工作台開在 `http://127.0.0.1:5173`。開發權杖是檢視者 `dev-viewer`、分析師 `dev-analyst`、管理員 `dev-admin`，只供本地驗收。
+工作台開在 `http://127.0.0.1:5173`。介面根路徑 `GET /` 會回服務入口，文件在 `/docs`。開發權杖是檢視者 `dev-viewer`、分析師 `dev-analyst`、管理員 `dev-admin`，只供本地驗收，不要用在公開主機。
 
 ## 命令
 
 ```bash
 prism raven status
 prism raven proxies
+prism raven images --sku DEMO-SKU-01 --url https://catalog.example/products/demo-sku-01
 prism raven probe rss
 prism bridge ingest --feed demo-harbor
 prism weave event list
@@ -46,7 +47,7 @@ prism scene list
 prism scene decide --sku DEMO-SKU-01 --node onsale
 ```
 
-`prism horn test` 只做乾跑，不會向外部網址送出。`prism scene decide` 的金額只來自規則引擎，登入態價格不會被採集。
+`prism horn test` 只做乾跑，不會向外部網址送出。`prism scene decide` 的金額只來自規則引擎，登入態價格不會被採集。`prism raven images` 只抓允許網域上標成商品圖的公開檔，不跟隨重新導向，目標拒絕時不換 IP。
 
 ## 測試
 

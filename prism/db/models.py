@@ -401,6 +401,28 @@ class PriceObservation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class ProductImage(Base):
+    """公開商品圖。只掛在 SKU 上，不建立規範事件，也不從圖裡讀價格。"""
+
+    __tablename__ = "product_image"
+    __table_args__ = (
+        UniqueConstraint("sku_id", "image_url", name="uq_product_image_url"),
+        CheckConstraint("acquisition_mode IN ('live','fallback')", name="ck_product_image_mode"),
+    )
+
+    image_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    sku_id: Mapped[str] = mapped_column(ForeignKey("sku.sku_id"), nullable=False)
+    source_page_url: Mapped[str] = mapped_column(Text, nullable=False)
+    image_url: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str] = mapped_column(Text, nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    object_key: Mapped[str] = mapped_column(Text, nullable=False)
+    acquisition_mode: Mapped[str] = mapped_column(Text, nullable=False)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class ProxyRun(Base):
     """出口嘗試。目標拒絕與傳輸失敗分開記，拒絕不會被換 IP 洗掉。"""
 

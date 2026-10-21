@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from prism.db.models import CanonicalEvent, Entity, EntityAlias, ProbeRun
 from prism.db.session import session_scope
 from prism.demo.commerce import seed_commerce
+from prism.demo.images import seed_product_images
 from prism.raven.base import RawItem
 from prism.runtime import PrismRuntime
 
@@ -181,12 +182,13 @@ def seed(runtime: PrismRuntime | None = None, now: datetime | None = None) -> di
     runtime = runtime or PrismRuntime()
     moment = now or datetime.now(timezone.utc)
     commerce = seed_commerce(runtime, moment)
+    images = seed_product_images(runtime, moment)
     ensure_degradation_sample(runtime, moment)
     with runtime.factory() as session:
         count = session.scalar(select(func.count()).select_from(CanonicalEvent)) or 0
         session.rollback()
     if count:
-        return {"events": int(count), "seeded": 0, **commerce}
+        return {"events": int(count), "seeded": 0, **commerce, **images}
     ensure_entities(runtime, moment)
     outcome = runtime.ingest_items(build_story(moment), actor="system:seed", now=moment)
     runtime.record_probe(
@@ -216,4 +218,5 @@ def seed(runtime: PrismRuntime | None = None, now: datetime | None = None) -> di
         "near_duplicates": outcome.report.near_duplicates,
         "seeded": 1,
         **commerce,
+        **images,
     }
