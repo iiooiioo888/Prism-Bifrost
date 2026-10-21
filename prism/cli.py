@@ -11,7 +11,11 @@ from sqlalchemy import select
 
 from prism.db.models import AlertRow, CanonicalEvent, EventAssessment, EventMention, MergeSuggestion
 from prism.db.session import session_scope
+from prism.commerce.images import ProductImageService
 from prism.commerce.service import CommerceError, CommerceService
+from prism.raven.compliance import ComplianceError
+from prism.raven.images import ImageCrawlError
+from prism.raven.proxies import AccessDenied, ProxyPoolExhausted
 from prism.demo.seed import seed
 from prism.herald.brief import BriefService
 from prism.horn.channels import test_channels
@@ -98,6 +102,27 @@ def raven_proxies() -> None:
             ]
         )
     _print_table(["代理", "狀態", "連續傳輸失敗", "最近結果", "說明"], rows)
+
+
+@raven_app.command("images")
+def raven_images(
+    sku: str = typer.Option(..., "--sku", help="標準化 SKU"),
+    url: str = typer.Option(..., "--url", help="已允許網域上的公開商品頁"),
+    scene: str = typer.Option("double11", "--scene", help="場景"),
+) -> None:
+    """抓取頁面上標成商品圖的公開圖片。不跟隨重新導向，目標拒絕時不換 IP。"""
+    runtime = _runtime()
+    try:
+        result = ProductImageService(runtime).crawl(scene_id=scene, sku_code=sku, page_url=url)
+    except (CommerceError, ComplianceError, AccessDenied, ImageCrawlError, ProxyPoolExhausted) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from exc
+    if result["note"]:
+        typer.echo(result["note"])
+    for item in result["images"]:
+        typer.echo(f"已保存 {item['byte_size']} bytes  {item['content_type']}  {item['image_url']}")
+    for item in result["rejected"]:
+        typer.echo(f"未保存 {item['url']}：{item['reason']}")
 
 
 @raven_app.command("probe")

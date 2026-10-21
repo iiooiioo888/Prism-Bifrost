@@ -56,6 +56,17 @@ export const api = {
   proxies: () => request<ProxyPoolStatus>("/api/v1/health/proxies"),
   scenes: () => request<{ items: SceneConfig[] }>("/api/v1/scenes"),
   sceneDecisions: (sceneId: string) => request<{ items: SceneDecision[] }>(`/api/v1/scenes/${sceneId}/decisions`),
+  productImages: (sceneId: string, skuCode: string) =>
+    request<{ sku_code: string; items: ProductImage[] }>(
+      `/api/v1/scenes/${sceneId}/images?sku_code=${encodeURIComponent(skuCode)}`,
+    ),
+  productImageBlob: async (imageId: string) => {
+    const headers = new Headers();
+    headers.set("Authorization", `Bearer ${TOKENS[currentRole()]}`);
+    const response = await fetch(`/api/v1/product-images/${imageId}`, { headers });
+    if (!response.ok) throw new ApiError(response.status, response.statusText);
+    return response.blob();
+  },
   dashboard: () => request<Dashboard>("/api/v1/dashboard"),
   briefs: () => request<{ items: Brief[] }>("/api/v1/briefs"),
   brief: (id: string) => request<Brief>(`/api/v1/briefs/${id}`),
@@ -240,6 +251,18 @@ export interface PricePayload {
     risks: string[];
     prohibited: string[];
   };
+}
+
+export interface ProductImage {
+  image_id: string;
+  sku_code: string;
+  source_page_url: string;
+  image_url: string;
+  content_type: string;
+  byte_size: number;
+  sha256: string;
+  acquisition_mode: string;
+  collected_at: string | null;
 }
 
 export interface SceneDecision {

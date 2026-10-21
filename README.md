@@ -33,6 +33,7 @@ npm run dev
 ```bash
 prism raven status
 prism raven proxies
+prism raven images --sku DEMO-SKU-01 --url https://catalog.example/products/demo-sku-01
 prism raven probe rss
 prism bridge ingest --feed demo-harbor
 prism weave event list
@@ -46,7 +47,7 @@ prism scene list
 prism scene decide --sku DEMO-SKU-01 --node onsale
 ```
 
-`prism horn test` 只做乾跑，不會向外部網址送出。`prism scene decide` 的金額只來自規則引擎，登入態價格不會被採集。
+`prism horn test` 只做乾跑，不會向外部網址送出。`prism scene decide` 的金額只來自規則引擎，登入態價格不會被採集。`prism raven images` 只抓允許網域上標成商品圖的公開檔，不跟隨重新導向，目標拒絕時不換 IP。
 
 ## 測試
 

@@ -181,6 +181,40 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: 可複核結論，金額為字串 }
+  /scenes/{scene_id}/images:
+    get:
+      summary: 某 SKU 已保存的公開商品圖
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: sku_code
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 商品圖清單。沒有 SKU 時 items 為空 }
+    post:
+      summary: 從公開頁抓取標成商品圖的檔案
+      parameters:
+        - in: path
+          name: scene_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: 已保存與未保存的圖片。不跟隨重新導向 }
+        "403": { description: 站點規則、robots 或目標拒絕。拒絕後不換 IP }
+  /product-images/{image_id}:
+    get:
+      summary: 商品圖檔
+      parameters:
+        - in: path
+          name: image_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: png、jpeg、gif 或 webp 位元組 }
   /scenes/{scene_id}/decide:
     post:
       summary: 產出 SKU 決策

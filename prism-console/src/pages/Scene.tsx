@@ -1,4 +1,5 @@
-import { api, type PricePayload, type SceneConfig } from "../api";
+import { useEffect, useState } from "react";
+import { api, type PricePayload, type ProductImage, type SceneConfig } from "../api";
 import { Loading, useAsync } from "../components";
 
 const ORDER_TEXT: Record<string, string> = {
@@ -12,9 +13,11 @@ const ORDER_TEXT: Record<string, string> = {
 export function ScenePage() {
   const scenes = useAsync(() => api.scenes().then((payload) => payload.items), []);
   const decisions = useAsync(() => api.sceneDecisions("double11").then((payload) => payload.items), []);
-  if (scenes.loading || decisions.loading) return <Loading />;
+  const images = useAsync(() => api.productImages("double11", "DEMO-SKU-01"), []);
+  if (scenes.loading || decisions.loading || images.loading) return <Loading />;
   if (scenes.error) return <div className="error">{scenes.error}</div>;
   if (decisions.error) return <div className="error">{decisions.error}</div>;
+  if (images.error) return <div className="error">{images.error}</div>;
   const commerce = scenes.data?.find((scene) => scene.scene_id === "double11");
   const harbor = scenes.data?.find((scene) => scene.scene_id === "harbor_watch");
   const latest = decisions.data?.[0]?.payload;
@@ -28,6 +31,7 @@ export function ScenePage() {
         {harbor && <SceneCard scene={harbor} />}
         {commerce && <SceneCard scene={commerce} />}
       </div>
+      <ProductImages items={images.data?.items ?? []} />
       {latest ? <Decision payload={latest} /> : <p>尚未產出可複核結論。</p>}
     </section>
   );
@@ -57,6 +61,53 @@ function SceneCard({ scene }: { scene: SceneConfig }) {
         <p>優惠順序：{scene.price_rule_order.map((layer) => ORDER_TEXT[layer] || layer).join(" → ")}。國補固定最後，順序錯誤會被拒絕。</p>
       )}
     </article>
+  );
+}
+
+function ProductImages({ items }: { items: ProductImage[] }) {
+  return (
+    <article className="panel" style={{ marginTop: 22 }}>
+      <h3 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>商品圖片</h3>
+      <p style={{ color: "var(--muted)" }}>
+        只保存允許網域上標成商品圖的公開檔。廣告圖不抓。登入、驗證碼與 robots 禁止的路徑不抓。重新導向不跟隨。目標拒絕時停止，不會換 IP 再試。
+      </p>
+      {items.length === 0 ? <p>這個 SKU 還沒有公開商品圖。</p> : <Gallery items={items} />}
+    </article>
+  );
+}
+
+function Gallery({ items }: { items: ProductImage[] }) {
+  const [urls, setUrls] = useState<string[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const created: string[] = [];
+    Promise.all(items.map((item) => api.productImageBlob(item.image_id)))
+      .then((blobs) => {
+        if (!alive) return;
+        const next = blobs.map((blob) => {
+          const url = URL.createObjectURL(blob);
+          created.push(url);
+          return url;
+        });
+        setUrls(next);
+      })
+      .catch(() => {
+        if (alive) setUrls([]);
+      });
+    return () => {
+      alive = false;
+      created.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [items]);
+  return (
+    <div className="product-images">
+      {items.map((item, index) => (
+        <figure key={item.image_id}>
+          {urls[index] ? <img src={urls[index]} alt={item.image_url} /> : <div className="empty">圖片讀取中</div>}
+          <figcaption>{item.image_url}</figcaption>
+        </figure>
+      ))}
+    </div>
   );
 }
 

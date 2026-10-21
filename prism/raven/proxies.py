@@ -19,14 +19,25 @@ class TransportError(RuntimeError):
 class AccessDenied(RuntimeError):
     """目標拒絕。不得改用其他 IP 再試。"""
 
-    def __init__(self, proxy_id: str, status_code: int | None, detail: str) -> None:
+    def __init__(
+        self,
+        proxy_id: str,
+        status_code: int | None,
+        detail: str,
+        attempts: tuple[ProxyAttempt, ...] = (),
+    ) -> None:
         self.proxy_id = proxy_id
         self.status_code = status_code
+        self.attempts = attempts
         super().__init__(detail)
 
 
 class ProxyPoolExhausted(RuntimeError):
     """全部出口都傳輸失敗。結果必須顯式失敗，不能當成空成功。"""
+
+    def __init__(self, detail: str = "", attempts: tuple[ProxyAttempt, ...] = ()) -> None:
+        self.attempts = attempts
+        super().__init__(detail)
 
 
 ACCESS_DENIED_STATUSES = frozenset({401, 403, 429})
@@ -64,7 +75,16 @@ class EgressResult:
     attempts: tuple[ProxyAttempt, ...]
 
 
+@dataclass(frozen=True)
+class EgressBytes:
+    proxy_id: str
+    status_code: int
+    body: bytes
+    attempts: tuple[ProxyAttempt, ...]
+
+
 Transport = Callable[[str, str | None], Awaitable[tuple[int, str]]]
+BytesTransport = Callable[[str, str | None], Awaitable[tuple[int, bytes]]]
 
 
 def load_proxy_pool(document: Mapping[str, Any]) -> ProxyPoolConfig:
@@ -107,6 +127,21 @@ def access_denied(status_code: int, body: str) -> bool:
     return any(marker in haystack or marker in body for marker in DENIAL_MARKERS)
 
 
+def _looks_like_image(body: bytes) -> bool:
+    if body.startswith(b"\x89PNG") or body.startswith(b"\xff\xd8\xff") or body.startswith(b"GIF8"):
+        return True
+    return len(body) >= 12 and body.startswith(b"RIFF") and body[8:12] == b"WEBP"
+
+
+def access_denied_bytes(status_code: int, body: bytes) -> bool:
+    """圖片位元組不拿來掃拒絕字樣，避免圖檔內容被誤判成驗證碼。"""
+    if status_code in ACCESS_DENIED_STATUSES:
+        return True
+    if _looks_like_image(body):
+        return False
+    return access_denied(status_code, body[:8192].decode("utf-8", errors="replace"))
+
+
 async def fetch_with_pool(
     url: str,
     pool: ProxyPoolConfig,
@@ -135,10 +170,10 @@ async def fetch_with_pool(
             continue
         if access_denied(status_code, body):
             attempts.append(ProxyAttempt(proxy.proxy_id, "access_denied", status_code, "目標拒絕，已停止且不改用其他 IP"))
-            raise AccessDenied(proxy.proxy_id, status_code, attempts[-1].detail)
+            raise AccessDenied(proxy.proxy_id, status_code, attempts[-1].detail, tuple(attempts))
         attempts.append(ProxyAttempt(proxy.proxy_id, "success", status_code, "出口可用"))
         return EgressResult(proxy.proxy_id, status_code, body, tuple(attempts))
-    raise ProxyPoolExhausted("全部出口傳輸中斷：" + "; ".join(item.detail for item in attempts))
+    raise ProxyPoolExhausted("全部出口傳輸中斷：" + "; ".join(item.detail for item in attempts), tuple(attempts))
 
 
 async def _direct(url: str, transport: Transport) -> EgressResult:
@@ -147,8 +182,54 @@ async def _direct(url: str, transport: Transport) -> EgressResult:
     except TransportError as exc:
         raise ProxyPoolExhausted(f"直連傳輸失敗：{exc}") from exc
     if access_denied(status_code, body):
-        raise AccessDenied("direct", status_code, "目標拒絕，直連停止")
+        attempt = ProxyAttempt("direct", "access_denied", status_code, "目標拒絕，直連停止")
+        raise AccessDenied("direct", status_code, attempt.detail, (attempt,))
     return EgressResult("direct", status_code, body, (ProxyAttempt("direct", "success", status_code, "未使用代理"),))
+
+
+async def fetch_bytes_with_pool(
+    url: str,
+    pool: ProxyPoolConfig,
+    *,
+    assert_allowed: Callable[[str], None],
+    transport: BytesTransport,
+    transport_failures: Mapping[str, int] | None = None,
+) -> EgressBytes:
+    """與文字抓取同一套出口規則。圖片本體不因內容字樣而改判成拒絕。"""
+    assert_allowed(url)
+    failures = transport_failures or {}
+    if not pool.enabled:
+        return await _direct_bytes(url, transport)
+    usable = [item for item in pool.proxies if failures.get(item.proxy_id, 0) < pool.transport_failure_limit]
+    if not usable:
+        raise ProxyPoolExhausted("全部出口傳輸中斷")
+    attempts: list[ProxyAttempt] = []
+    for proxy in usable:
+        try:
+            status_code, body = await transport(url, proxy.url)
+        except TransportError as exc:
+            attempts.append(ProxyAttempt(proxy.proxy_id, "transport_failure", None, str(exc)))
+            continue
+        if status_code in TRANSPORT_STATUSES:
+            attempts.append(ProxyAttempt(proxy.proxy_id, "transport_failure", status_code, "出口閘道失敗"))
+            continue
+        if access_denied_bytes(status_code, body):
+            attempts.append(ProxyAttempt(proxy.proxy_id, "access_denied", status_code, "目標拒絕，已停止且不改用其他 IP"))
+            raise AccessDenied(proxy.proxy_id, status_code, attempts[-1].detail, tuple(attempts))
+        attempts.append(ProxyAttempt(proxy.proxy_id, "success", status_code, "出口可用"))
+        return EgressBytes(proxy.proxy_id, status_code, body, tuple(attempts))
+    raise ProxyPoolExhausted("全部出口傳輸中斷：" + "; ".join(item.detail for item in attempts), tuple(attempts))
+
+
+async def _direct_bytes(url: str, transport: BytesTransport) -> EgressBytes:
+    try:
+        status_code, body = await transport(url, None)
+    except TransportError as exc:
+        raise ProxyPoolExhausted(f"直連傳輸失敗：{exc}") from exc
+    if access_denied_bytes(status_code, body):
+        attempt = ProxyAttempt("direct", "access_denied", status_code, "目標拒絕，直連停止")
+        raise AccessDenied("direct", status_code, attempt.detail, (attempt,))
+    return EgressBytes("direct", status_code, body, (ProxyAttempt("direct", "success", status_code, "未使用代理"),))
 
 
 def classify_proxy(

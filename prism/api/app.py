@@ -39,6 +39,7 @@ from prism.herald.review import (
     rescore_after,
     split_event,
 )
+from prism.api.images import register_image_routes
 from prism.api.scenes import register_scene_routes
 from prism.runtime import PrismRuntime
 
@@ -438,6 +439,7 @@ def create_app(runtime: PrismRuntime | None = None) -> FastAPI:
             }
 
     register_scene_routes(application)
+    register_image_routes(application)
     return application
 
 

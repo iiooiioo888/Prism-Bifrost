@@ -309,6 +309,22 @@ CREATE TABLE price_observation (
   UNIQUE (sku_id, observed_on, source_url)
 );
 
+-- 公開商品圖。只掛 SKU，不寫 canonical_event，也不從圖裡讀價格。
+CREATE TABLE product_image (
+  image_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sku_id            UUID NOT NULL REFERENCES sku(sku_id),
+  source_page_url   TEXT NOT NULL,
+  image_url         TEXT NOT NULL,
+  content_type      TEXT NOT NULL,
+  byte_size         INTEGER NOT NULL,
+  sha256            TEXT NOT NULL,
+  object_key        TEXT NOT NULL,
+  acquisition_mode  TEXT NOT NULL CHECK (acquisition_mode IN ('live','fallback')),
+  collected_at      TIMESTAMPTZ NOT NULL,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (sku_id, image_url)
+);
+
 -- 出口嘗試。access_denied 表示目標拒絕，系統不得改用其他 IP 再試同一請求。
 CREATE TABLE proxy_run (
   run_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
