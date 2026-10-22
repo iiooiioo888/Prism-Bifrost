@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, currentRole, type PriceComparison, type PricePayload, type ProductImage, type ProductListing, type ProductMonitorReport, type SceneConfig } from "../api";
+import { api, currentRole, type ModelExplanation, type PriceComparison, type PricePayload, type ProductImage, type ProductListing, type ProductMonitorReport, type SceneConfig } from "../api";
 import { Loading, useAsync } from "../components";
 
 const AVAILABILITY: Record<string, string> = {
@@ -22,6 +22,7 @@ export function ScenePage() {
   const markets = useAsync(() => api.marketplaces().then((payload) => payload.items), []);
   const decisions = useAsync(() => api.sceneDecisions("double11").then((payload) => payload.items), []);
   const images = useAsync(() => api.productImages("double11", "DEMO-SKU-01"), []);
+  const language = useAsync(() => api.languageModel(), []);
   const [query, setQuery] = useState("保溫杯");
   const [report, setReport] = useState<ProductMonitorReport | null>(null);
   const [monitorError, setMonitorError] = useState("");
@@ -29,11 +30,14 @@ export function ScenePage() {
   const [listing, setListing] = useState<ProductListing | null>(null);
   const [listingError, setListingError] = useState("");
   const [busy, setBusy] = useState(false);
-  if (scenes.loading || markets.loading || decisions.loading || images.loading) return <Loading />;
+  const [explanation, setExplanation] = useState<ModelExplanation | null>(null);
+  const [explainError, setExplainError] = useState("");
+  if (scenes.loading || markets.loading || decisions.loading || images.loading || language.loading) return <Loading />;
   if (scenes.error) return <div className="error">{scenes.error}</div>;
   if (markets.error) return <div className="error">{markets.error}</div>;
   if (decisions.error) return <div className="error">{decisions.error}</div>;
   if (images.error) return <div className="error">{images.error}</div>;
+  if (language.error) return <div className="error">{language.error}</div>;
   const commerce = scenes.data?.find((scene) => scene.scene_id === "double11");
   const latest = decisions.data?.[0]?.payload;
   return (
@@ -43,6 +47,41 @@ export function ScenePage() {
         輸入一種商品後，到天貓、淘寶、拼多多、京東、轉轉讀公開標價，並記下頁面寫明的庫存、運費與賣家。同一件商品才對照實付。容量或顏色不同只列單位價格。手動查一次、每天重查，標價變動後再查一次。只有頁面標價下降才告警。
       </p>
       <article className="panel">
+        <h3 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>外部模型</h3>
+        <p style={{ color: "var(--muted)" }}>
+          {language.data?.detail}
+          {language.data?.model ? ` 模型 ${language.data.model}。` : ""}
+          解釋只引用既有決策，不寫金額，也不改標價。
+        </p>
+        {currentRole() !== "viewer" && (
+          <button
+            className="btn"
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setExplainError("");
+              try {
+                setExplanation(await api.explainScene("double11", report?.sku_code || "DEMO-SKU-01"));
+              } catch (caught) {
+                setExplanation(null);
+                setExplainError(caught instanceof Error ? caught.message : "解釋失敗");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? "解釋中" : "請模型解釋目前決策"}
+          </button>
+        )}
+        {explainError && <div className="error" style={{ marginTop: 12 }}>{explainError}</div>}
+        {explanation && (
+          <p style={{ marginTop: 12 }}>
+            {explanation.explanation || explanation.detail} {explanation.label}
+          </p>
+        )}
+      </article>
+      <article className="panel" style={{ marginTop: 22 }}>
         <h3 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>商品平台</h3>
         <p style={{ color: "var(--muted)" }}>
           登入牆、驗證碼與 robots 禁止的路徑不寫價格。重新導向不跟隨。目標拒絕時停止，不會換 IP。頁面上的登入連結不會被當成可以繞過的入口。

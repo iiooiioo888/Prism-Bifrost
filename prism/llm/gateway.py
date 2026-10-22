@@ -103,6 +103,6 @@ class ModelGateway:
             }
         else:
             raise ValueError(f"未知模型用途：{purpose}")
-        self._cache[digest] = (now, "cached", normalized)
         status = "unsupported" if normalized.get("unsupported") else "ok"
+        self._cache[digest] = (now, status, normalized)
         return GatewayResult(status, normalized)

@@ -10,6 +10,7 @@ from typing import Any
 
 import yaml
 
+from prism.llm.external import assert_no_llm_secret
 from prism.raven.proxies import ProxyPoolConfig, load_proxy_pool
 from prism.scenes.registry import Scene, load_scenes
 
@@ -83,6 +84,7 @@ def load_settings(config_path: Path | None = None) -> Settings:
         prism_path = (root / prism_path).resolve()
     config_dir = prism_path.parent
     app_config = _load_yaml(prism_path)
+    assert_no_llm_secret(app_config)
     return Settings(
         root=root,
         app=app_config.get("app", {}),

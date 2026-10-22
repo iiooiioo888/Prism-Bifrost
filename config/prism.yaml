@@ -109,6 +109,7 @@ watch:
     alert_threshold: 0.75
 
 llm:
+  # 位址與憑證不寫在這裡。同時設定 PRISM_LLM_BASE_URL 與 PRISM_LLM_API_KEY 才連外；缺一或不設就不呼叫。
   gateway: openai-compatible
   model_merge: qwen2.5-7b-instruct
   model_brief: gpt-4o
