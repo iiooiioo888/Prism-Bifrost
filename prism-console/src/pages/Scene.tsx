@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
-import { api, currentRole, type PricePayload, type ProductImage, type ProductListing, type ProductMonitorReport, type SceneConfig } from "../api";
+import { api, currentRole, type PriceComparison, type PricePayload, type ProductImage, type ProductListing, type ProductMonitorReport, type SceneConfig } from "../api";
 import { Loading, useAsync } from "../components";
+
+const AVAILABILITY: Record<string, string> = {
+  instock: "有貨",
+  outofstock: "缺貨",
+  preorder: "預售",
+  unknown: "未標示",
+};
 
 const ORDER_TEXT: Record<string, string> = {
   item: "單品級",
@@ -33,7 +40,7 @@ export function ScenePage() {
     <section>
       <h2 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>商品</h2>
       <p style={{ color: "var(--muted)" }}>
-        輸入一種商品後，到天貓、淘寶、拼多多、京東、轉轉讀公開標價。品牌、型號、容量或顏色不同會分開。手動查一次、每天重查，標價變動後再查一次。只有頁面標價下降才告警。
+        輸入一種商品後，到天貓、淘寶、拼多多、京東、轉轉讀公開標價，並記下頁面寫明的庫存、運費與賣家。同一件商品才對照實付。容量或顏色不同只列單位價格。手動查一次、每天重查，標價變動後再查一次。只有頁面標價下降才告警。
       </p>
       <article className="panel">
         <h3 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>商品平台</h3>
@@ -84,6 +91,7 @@ export function ScenePage() {
             {report.alerts?.map((alert) => (
               <p key={alert.source_url} className="error">{alert.detail} {alert.previous_price} → {alert.list_price}</p>
             ))}
+            {report.comparison && <Comparison comparison={report.comparison} />}
             {report.recommendations?.flatMap((item) => item.abstain?.executable ?? []).slice(0, 3).map((item) => (
               <p key={item.statement}>{item.statement} 待人工確認。</p>
             ))}
@@ -133,7 +141,11 @@ export function ScenePage() {
         {listing && (
           <p style={{ marginTop: 12 }}>
             {listing.label} {listing.sku_code} {listing.title}{" "}
-            {listing.list_price ? `標價 ${listing.list_price}` : "沒有寫入標價"}。{listing.detail}
+            {listing.list_price ? `標價 ${listing.list_price}` : "沒有寫入標價"}
+            {listing.shipping_price ? `，公開運費 ${listing.shipping_price}` : ""}
+            {listing.availability ? `，庫存 ${AVAILABILITY[listing.availability] || listing.availability}` : ""}
+            {listing.seller ? `，賣家 ${listing.seller}` : ""}
+            。{listing.detail}
           </p>
         )}
       </article>
@@ -143,6 +155,68 @@ export function ScenePage() {
       <ProductImages items={images.data?.items ?? []} />
       {latest ? <Decision payload={latest} /> : <p>尚未產出可複核結論。</p>}
     </section>
+  );
+}
+
+function Comparison({ comparison }: { comparison: PriceComparison }) {
+  const groups = comparison.same_identity.filter((group) => group.comparable_count > 0);
+  return (
+    <div style={{ marginTop: 16 }}>
+      <h3 style={{ fontFamily: "var(--serif)", fontWeight: 500 }}>實付對照</h3>
+      <p style={{ color: "var(--muted)" }}>{comparison.note}</p>
+      {groups.length === 0 && <p>這次沒有可對照的同一件商品，標價仍留在下面的表裡。</p>}
+      {groups.map((group) => (
+        <div key={group.sku_code} style={{ marginTop: 12 }}>
+          <strong>{group.title}</strong>
+          <p>{group.statement}</p>
+          {group.review && <p style={{ color: "var(--warn)" }}>{group.review}</p>}
+          <table>
+            <thead>
+              <tr>
+                <th>平台</th><th>標價</th><th>實付</th><th>相差</th><th>運費</th><th>庫存</th><th>單位價格</th><th>說明</th>
+              </tr>
+            </thead>
+            <tbody>
+              {group.rows.map((row) => (
+                <tr key={row.source_url}>
+                  <td>{row.label}{row.seller ? `（${row.seller}）` : ""}</td>
+                  <td>{row.list_price}</td>
+                  <td>{row.payable || "—"}</td>
+                  <td>{row.gap || "—"}</td>
+                  <td>{row.shipping_known ? row.shipping : "未公開"}</td>
+                  <td>{AVAILABILITY[row.availability] || row.availability}</td>
+                  <td>{row.unit_price && row.unit ? `${row.unit_price}/${row.unit}` : "—"}</td>
+                  <td>{row.baseline || row.reason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+      {comparison.related_specs.map((board) => (
+        <div key={`${board.brand}-${board.model}`} style={{ marginTop: 12 }}>
+          <strong>{board.brand} {board.model}</strong>
+          <p>{board.note}</p>
+          <table>
+            <thead>
+              <tr><th>規格</th><th>平台</th><th>標價</th><th>實付</th><th>單位價格</th><th>匹配</th></tr>
+            </thead>
+            <tbody>
+              {board.rows.map((row) => (
+                <tr key={`${row.sku_code}-${row.source_url}`}>
+                  <td>{[row.capacity, row.color].filter(Boolean).join(" ") || "—"}</td>
+                  <td>{row.label}</td>
+                  <td>{row.list_price}</td>
+                  <td>{row.payable}</td>
+                  <td>{row.unit_price && row.unit ? `${row.unit_price}/${row.unit}` : "—"}</td>
+                  <td>{row.match_band === "high" ? "高檔" : row.match_band === "medium" ? "中檔" : "低檔"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -241,7 +315,7 @@ function Decision({ payload }: { payload: PricePayload }) {
       <table>
         <thead>
           <tr>
-            <th>方案</th><th>標價</th><th>實付</th><th>排序分數</th><th>價保</th><th>匹配上限</th><th>價格基準</th>
+            <th>方案</th><th>標價</th><th>實付</th><th>運費</th><th>排序分數</th><th>價保</th><th>匹配上限</th><th>價格基準</th>
           </tr>
         </thead>
         <tbody>
@@ -250,6 +324,7 @@ function Decision({ payload }: { payload: PricePayload }) {
               <td>{offer.platform}</td>
               <td>{offer.list_price}</td>
               <td>{offer.payable}</td>
+              <td>{offer.shipping ?? "未公開"}</td>
               <td>{offer.score}</td>
               <td>{offer.price_protection ? "成立" : "不成立"}</td>
               <td>{offer.match_band === "high" ? "高檔" : offer.match_band === "medium" ? "中檔" : "低檔"} {offer.match_cap}</td>

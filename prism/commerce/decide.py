@@ -6,9 +6,10 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from prism.commerce.baseline import median_money
+from prism.commerce.compare import landed_payable
 from prism.commerce.money import money, money_text, score_text, unit
 from prism.commerce.protection import judge_protection
-from prism.commerce.rules import Adjustment, solve
+from prism.commerce.rules import Adjustment
 from prism.commerce.sku_match import mark_match
 
 PROHIBITED_STATEMENTS = (
@@ -36,6 +37,8 @@ class OfferInput:
     adjustments: tuple[Adjustment, ...]
     acquisition_mode: str = "live"
     valid_until: str | None = None
+    availability: str = "unknown"
+    shipping_price: Decimal | None = None
 
 
 def decide_now(**kwargs: object) -> dict:
@@ -77,12 +80,17 @@ def decide_offers(
             page_list_price_dropped=offer.page_list_price_dropped,
             cause=offer.protection_cause,
         )
-        comparable = offer.price_basis == "guest" and mark.band != "low" and offer.list_price is not None
+        comparable = (
+            offer.price_basis == "guest"
+            and mark.band != "low"
+            and offer.list_price is not None
+            and offer.availability != "outofstock"
+        )
         if not comparable:
             withheld.append(_withheld(offer, mark.band, mark.cap))
             continue
         assert offer.list_price is not None
-        result = solve(offer.list_price, list(offer.adjustments))
+        payable, result = landed_payable(offer.list_price, offer.adjustments, offer.shipping_price)
         for adjustment in result.withheld:
             uncertainties.append(f"{offer.platform} 的{adjustment.label}資格無法確認，未套用該層")
         if verdict.unparsed:
@@ -92,7 +100,7 @@ def decide_offers(
                 "offer": offer,
                 "band": mark.band,
                 "match_cap": mark.cap,
-                "payable": result.payable,
+                "payable": payable,
                 "steps": result.steps,
                 "protected": verdict.applies,
                 "protection": verdict,
@@ -179,6 +187,8 @@ def _public_rank(item: dict) -> dict:
     ]
     if offer.valid_until:
         reasons.append(f"價格有效期至 {offer.valid_until}")
+    if offer.shipping_price is not None:
+        reasons.append(f"公開運費 {money_text(offer.shipping_price)} 已計入實付")
     reasons.append(f"價格基準為{ '遊客態' if offer.price_basis == 'guest' else offer.price_basis }")
     return {
         "offer_id": offer.offer_id,
@@ -186,6 +196,7 @@ def _public_rank(item: dict) -> dict:
         "source_url": offer.source_url,
         "list_price": money_text(offer.list_price or money("0")),
         "payable": money_text(item["payable"]),
+        "shipping": None if offer.shipping_price is None else money_text(offer.shipping_price),
         "score": score_text(item["score"]),
         "match_confidence": score_text(offer.match_confidence),
         "match_band": item["band"],
@@ -215,6 +226,8 @@ def _withheld(offer: OfferInput, band: str, cap: Decimal) -> dict:
         reason = "登入態價格不可比，且系統不採集登入態價格"
     elif offer.list_price is None:
         reason = "缺少可核對的遊客態標價"
+    elif offer.availability == "outofstock":
+        reason = "頁面標成缺貨，不進入排序"
     else:
         reason = "SKU 匹配置信度為低檔，不進入排序"
     return {

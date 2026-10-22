@@ -452,6 +452,65 @@ def test_daily_price_median_groups_each_day_first():
     assert median == Decimal("30.00")
 
 
+def test_public_shipping_is_added_after_rules_and_out_of_stock_is_withheld():
+    shipped = decide_now(
+        offers=[_offer(shipping_price=unit("6"))],
+        node="onsale",
+        scene_id="double11",
+        sku_code=SKU_CODE,
+        sku_title="示範標準化商品",
+        weights=WEIGHTS,
+        baseline_days=14,
+        baseline_required=14,
+        match_high=unit("0.85"),
+        match_medium=unit("0.65"),
+    )
+    assert shipped["ranking"][0]["payable"] == "106.00"
+    assert shipped["ranking"][0]["shipping"] == "6.00"
+    withheld = decide_now(
+        offers=[_offer(availability="outofstock")],
+        node="onsale",
+        scene_id="double11",
+        sku_code=SKU_CODE,
+        sku_title="示範標準化商品",
+        weights=WEIGHTS,
+        baseline_days=14,
+        baseline_required=14,
+        match_high=unit("0.85"),
+        match_medium=unit("0.65"),
+    )
+    assert withheld["ranking"] == []
+    assert "缺貨" in withheld["withheld"][0]["reason"]
+
+
+def test_repeat_reading_of_the_same_url_keeps_the_latest_price(runtime):
+    service = CommerceService(runtime)
+    earlier = datetime(2026, 10, 21, 8, tzinfo=timezone.utc)
+    later = datetime(2026, 10, 22, 8, tzinfo=timezone.utc)
+    common = dict(
+        sku_code="SKU-LATEST",
+        sku_title="同一網址",
+        scene_id="double11",
+        platform="京東",
+        source_url="https://item.jd.com/400.html",
+        upstream_timestamp=earlier,
+        acquisition_mode="live",
+        price_basis="guest",
+        match_confidence=Decimal("0.96"),
+        page_list_price_dropped=False,
+        protection_cause="",
+        inventory_reliability=Decimal("0.5"),
+        after_sales=Decimal("0.5"),
+        adjustments=[],
+    )
+    service.record_offer(**common, list_price=Decimal("200.00"), collected_at=earlier)
+    service.record_offer(**common, list_price=Decimal("150.00"), collected_at=later)
+    payload = service.decide(scene_id="double11", sku_code="SKU-LATEST", node="onsale", path="fast")
+    assert [item["list_price"] for item in payload["ranking"]] == ["150.00"]
+    with session_scope(runtime.factory) as session:
+        assert int(session.scalar(select(func.count()).select_from(SkuOffer)) or 0) == 2
+
+
 def test_ingest_ignores_optional_price_fields(runtime):
     now = datetime(2026, 10, 21, 9, tzinfo=timezone.utc)
     runtime.ingest_items(

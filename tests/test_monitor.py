@@ -91,6 +91,8 @@ def test_named_product_reads_public_prices_on_all_five_platforms(runtime):
         assert monitor is not None
         assert monitor.sku_code == result["sku_code"]
         assert monitor.monitor_id == result["monitor_id"]
+    assert result["comparison"]["related_specs"] == []
+    assert {group["comparable_count"] for group in result["comparison"]["same_identity"]} == {0}
     again = asyncio.run(monitor_product(runtime, scene_id="double11", query=QUERY))
     assert again["monitor_id"] == result["monitor_id"]
     assert again["run_id"] != result["run_id"]
@@ -241,6 +243,16 @@ def test_same_identity_is_one_sku_and_a_different_spec_is_split(runtime):
         high = [offer for offer in offers if f"{offer.match_confidence:.3f}" != "0.000"]
         assert len({offer.sku_id for offer in high}) == 1
         assert any(f"{offer.match_confidence:.3f}" == "0.000" for offer in offers)
+    group = result["comparison"]["same_identity"][0]
+    assert group["comparable_count"] == 4
+    assert group["low_payable"] == "45.00"
+    assert group["spread"] == "83.00"
+    compared = {row["source_url"] for row in group["rows"] if row["comparable"]}
+    assert items["jd"][0] not in compared
+    assert items["zhuanzhuan"][0] in compared
+    board = result["comparison"]["related_specs"][0]
+    assert {row["capacity"] for row in board["rows"]} == {"500ml", "350ml"}
+    assert "不併入" in board["note"]
 
 
 def test_daily_recheck_change_confirmation_and_drop_alert(runtime):

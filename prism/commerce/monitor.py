@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import select
 
 from prism.clock import utcnow
+from prism.commerce.compare import Quote, compare_quotes
 from prism.commerce.identity import identity_code, observe_traits, parse_traits
 from prism.commerce.marketplaces import (
     LISTINGS_PER_PLATFORM,
@@ -27,7 +28,7 @@ from prism.commerce.marketplaces import (
     _marked,
     _record_attempts,
 )
-from prism.commerce.money import score_text, unit
+from prism.commerce.money import money_text, score_text, unit
 from prism.commerce.official import official_quotes, official_report
 from prism.commerce.schedule import mark_query_schedule, previous_list_price, remember_drop
 from prism.commerce.service import CommerceError, CommerceService
@@ -96,6 +97,8 @@ async def monitor_product(
     groups = [_group(market.platform_id, market.label, buckets.get(market.platform_id, [])) for market in MARKETPLACES]
     monitor_id, run_id = _save(runtime, scene_id, name, code, flat, moment, confirm=bool(alerts))
     recommendations = _recommend(runtime, scene_id, flat)
+    comparison = _comparison(runtime, flat, scene.baseline_days_required)
+    _attach_reviews(recommendations, comparison)
     confidences = [unit(hit["match_confidence"]) for hit in flat if hit.get("match_confidence")]
     ceiling = min(confidences) if confidences else unit("0.25")
     return {
@@ -111,6 +114,7 @@ async def monitor_product(
         "official": official_report(runtime),
         "alerts": alerts,
         "recommendations": recommendations,
+        "comparison": comparison,
         "platforms": groups,
     }
 
@@ -304,6 +308,9 @@ def _persist_product(
             sku_code=code,
             match_confidence=stored["match_confidence"],
             match_band=matched.band,
+            availability=product.availability,
+            shipping_price=None if product.shipping_price is None else money_text(product.shipping_price),
+            seller=product.seller,
         ),
         alerts,
     )
@@ -336,6 +343,9 @@ def _hit(
     sku_code: str | None = None,
     match_confidence: str | None = None,
     match_band: str | None = None,
+    availability: str | None = None,
+    shipping_price: str | None = None,
+    seller: str | None = None,
 ) -> dict[str, Any]:
     return {
         "platform": market.platform_id,
@@ -348,6 +358,9 @@ def _hit(
         "sku_code": sku_code,
         "match_confidence": match_confidence,
         "match_band": match_band,
+        "availability": availability,
+        "shipping_price": shipping_price,
+        "seller": seller,
     }
 
 
@@ -379,11 +392,54 @@ def _group(platform_id: str, label: str, hits: list[dict[str, Any]]) -> dict[str
                 "sku_code": item.get("sku_code"),
                 "match_confidence": item.get("match_confidence"),
                 "match_band": item.get("match_band"),
+                "availability": item.get("availability"),
+                "shipping_price": item.get("shipping_price"),
+                "seller": item.get("seller"),
             }
             for item in hits
             if item["source_url"] or item["title"]
         ],
     }
+
+
+def _comparison(runtime: PrismRuntime, hits: list[dict[str, Any]], baseline_required: int) -> dict[str, Any]:
+    service = CommerceService(runtime)
+    quotes: list[Quote] = []
+    baselines: dict[str, tuple[int, Decimal | None]] = {}
+    for hit in hits:
+        if hit.get("status") != "priced" or not hit.get("sku_code") or not hit.get("list_price"):
+            continue
+        code = str(hit["sku_code"])
+        if code not in baselines:
+            baselines[code] = service.baseline_snapshot(code)
+        quotes.append(
+            Quote(
+                platform=str(hit["platform"]),
+                label=str(hit.get("label") or hit["platform"]),
+                source_url=str(hit.get("source_url") or ""),
+                title=str(hit.get("title") or ""),
+                sku_code=code,
+                list_price=unit(str(hit["list_price"])),
+                price_basis="guest",
+                match_band=str(hit.get("match_band") or "low"),
+                match_confidence=unit(str(hit.get("match_confidence") or "0")),
+                availability=str(hit.get("availability") or "unknown"),
+                shipping_price=None if not hit.get("shipping_price") else unit(str(hit["shipping_price"])),
+                seller=hit.get("seller"),
+                traits=parse_traits(str(hit.get("title") or "")),
+            )
+        )
+    return compare_quotes(quotes, baselines=baselines, baseline_required=baseline_required)
+
+
+def _attach_reviews(recommendations: list[dict[str, Any]], comparison: dict[str, Any]) -> None:
+    by_code = {item.get("sku_code"): item for item in recommendations}
+    for group in comparison.get("same_identity") or []:
+        note = group.get("review")
+        payload = by_code.get(group.get("sku_code"))
+        abstain = payload.get("abstain") if isinstance(payload, dict) else None
+        if note and isinstance(abstain, dict):
+            abstain.setdefault("confirmations", []).append(note)
 
 
 def _recommend(runtime: PrismRuntime, scene_id: str, hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -442,6 +498,9 @@ def _save(
                     sku_code=item.get("sku_code"),
                     match_confidence=item.get("match_confidence"),
                     match_band=item.get("match_band"),
+                    availability=item.get("availability"),
+                    shipping_price=item.get("shipping_price"),
+                    seller=item.get("seller"),
                     created_at=now,
                 )
             )

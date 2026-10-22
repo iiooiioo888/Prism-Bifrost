@@ -364,6 +364,10 @@ class SkuOffer(Base):
     __table_args__ = (
         CheckConstraint("price_basis IN ('guest','logged_in')", name="ck_offer_basis"),
         CheckConstraint("acquisition_mode IN ('live','fallback')", name="ck_offer_mode"),
+        CheckConstraint(
+            "availability IN ('instock','outofstock','preorder','unknown')",
+            name="ck_offer_availability",
+        ),
     )
 
     offer_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -382,6 +386,9 @@ class SkuOffer(Base):
     after_sales: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False)
     adjustments: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     valid_until: Mapped[str | None] = mapped_column(Text)
+    availability: Mapped[str] = mapped_column(Text, nullable=False, default="unknown")
+    shipping_price: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    seller: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -482,6 +489,9 @@ class ProductMonitorHit(Base):
     sku_code: Mapped[str | None] = mapped_column(Text)
     match_confidence: Mapped[str | None] = mapped_column(Text)
     match_band: Mapped[str | None] = mapped_column(Text)
+    availability: Mapped[str | None] = mapped_column(Text)
+    shipping_price: Mapped[str | None] = mapped_column(Text)
+    seller: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

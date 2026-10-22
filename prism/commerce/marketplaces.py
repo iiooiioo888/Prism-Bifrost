@@ -100,6 +100,9 @@ class ParsedProduct:
     list_price: Decimal | None
     price_basis: str
     detail: str
+    availability: str = "unknown"
+    shipping_price: Decimal | None = None
+    seller: str | None = None
 
 
 def identify(url: str) -> tuple[Marketplace, str]:
@@ -230,6 +233,9 @@ def store_listing(
         inventory_reliability=Decimal("0"),
         after_sales=Decimal("0"),
         adjustments=[],
+        availability=product.availability,
+        shipping_price=product.shipping_price,
+        seller=product.seller,
     )
     if product.list_price is not None and product.price_basis == "guest":
         service.record_observation(
@@ -257,6 +263,9 @@ def store_listing(
         "stored": True,
         "event_created": False,
         "detail": product.detail,
+        "availability": product.availability,
+        "shipping_price": None if product.shipping_price is None else money_text(product.shipping_price),
+        "seller": product.seller,
     }
 
 
@@ -358,6 +367,9 @@ def _parse_product(html: str) -> ParsedProduct | None:
     title = ""
     price: Decimal | None = None
     currency = ""
+    availability = "unknown"
+    shipping: Decimal | None = None
+    seller: str | None = None
     for block in parser.scripts:
         try:
             payload = json.loads(block)
@@ -366,10 +378,16 @@ def _parse_product(html: str) -> ParsedProduct | None:
         for node in _products(payload):
             if not title and isinstance(node.get("name"), str):
                 title = node["name"].strip()
-            found, unit_name = _offer_price(node.get("offers"))
+            found, unit_name, signals = _offer_price(node.get("offers"))
             if price is None and found is not None:
                 price = found
                 currency = unit_name
+            if availability == "unknown" and signals[0] != "unknown":
+                availability = signals[0]
+            if shipping is None and signals[1] is not None:
+                shipping = signals[1]
+            if seller is None and signals[2]:
+                seller = signals[2]
     if not title:
         title = parser.meta.get("og:title", "").strip()
     if price is None and parser.meta.get("product:price:amount"):
@@ -378,28 +396,74 @@ def _parse_product(html: str) -> ParsedProduct | None:
     if not title:
         return None
     if price is not None and currency and currency.upper() not in {"CNY", "RMB", "¥"}:
-        return ParsedProduct(title[:200], None, "guest", "標價幣別不是人民幣，不寫入金額。沒有建立規範事件。")
+        return ParsedProduct(title[:200], None, "guest", "標價幣別不是人民幣，不寫入金額。沒有建立規範事件。", availability, shipping, seller)
     if price is None and _marked(html, LOGIN_MARKERS):
-        return ParsedProduct(title[:200], None, "logged_in", "頁面要求登入才看得到標價，沒有寫入金額。沒有建立規範事件。")
+        return ParsedProduct(title[:200], None, "logged_in", "頁面要求登入才看得到標價，沒有寫入金額。沒有建立規範事件。", availability, None, seller)
     if price is None:
-        return ParsedProduct(title[:200], None, "guest", "頁面沒有公開標價，不寫入金額。沒有建立規範事件。")
+        return ParsedProduct(title[:200], None, "guest", "頁面沒有公開標價，不寫入金額。沒有建立規範事件。", availability, shipping, seller)
     return ParsedProduct(
         title[:200],
         price,
         "guest",
         "已寫入遊客態標價。跨平台匹配置信度 0.250，不能單獨成為可執行價格結論。沒有建立規範事件。",
+        availability,
+        shipping,
+        seller,
     )
 
 
-def _offer_price(offers: Any) -> tuple[Decimal | None, str]:
+def _offer_price(offers: Any) -> tuple[Decimal | None, str, tuple[str, Decimal | None, str | None]]:
     if isinstance(offers, list):
         offers = offers[0] if offers else None
     if not isinstance(offers, dict):
-        return None, ""
+        return None, "", ("unknown", None, None)
     raw = offers.get("price")
     if raw in (None, ""):
         raw = offers.get("lowPrice")
-    return _decimal(raw), str(offers.get("priceCurrency") or "")
+    return _decimal(raw), str(offers.get("priceCurrency") or ""), _offer_signals(offers)
+
+
+def _offer_signals(offers: dict[str, Any]) -> tuple[str, Decimal | None, str | None]:
+    return _availability(offers.get("availability")), _shipping(offers), _seller(offers.get("seller"))
+
+
+def _availability(raw: Any) -> str:
+    token = str(raw or "").strip().lower().rsplit("/", 1)[-1].replace("-", "_")
+    if token in {"instock", "in_stock"}:
+        return "instock"
+    if token in {"outofstock", "out_of_stock", "soldout", "sold_out"}:
+        return "outofstock"
+    if token in {"preorder", "pre_order"}:
+        return "preorder"
+    return "unknown"
+
+
+def _shipping(offers: dict[str, Any]) -> Decimal | None:
+    details = offers.get("shippingDetails")
+    if isinstance(details, list):
+        details = details[0] if details else None
+    if not isinstance(details, dict):
+        return None
+    rate = details.get("shippingRate")
+    if isinstance(rate, list):
+        rate = rate[0] if rate else None
+    if not isinstance(rate, dict):
+        return None
+    currency = str(rate.get("currency") or rate.get("priceCurrency") or "")
+    if currency and currency.upper() not in {"CNY", "RMB", "¥"}:
+        return None
+    return _decimal(rate.get("value") if rate.get("value") not in (None, "") else rate.get("price"))
+
+
+def _seller(raw: Any) -> str | None:
+    if isinstance(raw, dict):
+        raw = raw.get("name")
+    if not isinstance(raw, str):
+        return None
+    name = " ".join(raw.split())
+    if not name or len(name) > 40 or "<" in name or any(ord(char) < 32 for char in name):
+        return None
+    return name
 
 
 def _decimal(raw: Any) -> Decimal | None:
