@@ -1,4 +1,5 @@
 import asyncio
+import json
 from dataclasses import replace
 
 import pytest
@@ -74,6 +75,43 @@ def test_public_price_is_a_product_offer_not_an_event(runtime):
         "https://detail.tmall.com/robots.txt",
         "https://detail.tmall.com/item.htm?id=100",
     ]
+
+
+def test_public_stock_shipping_and_seller_are_stored(runtime):
+    offer = {
+        "@type": "Offer",
+        "price": "80.00",
+        "priceCurrency": "CNY",
+        "availability": "https://schema.org/InStock",
+        "seller": {"@type": "Organization", "name": "虎牌旗艦店"},
+        "shippingDetails": {"@type": "OfferShippingDetails", "shippingRate": {"value": "6.00", "currency": "CNY"}},
+    }
+    page = (
+        "<html><head><script type=\"application/ld+json\">"
+        + json.dumps({"@type": "Product", "name": "虎牌保溫杯", "offers": offer}, ensure_ascii=False)
+        + "</script></head><body></body></html>"
+    )
+    seen: list[tuple[str, str | None]] = []
+    runtime.listing_transport = _routes(
+        {
+            "https://detail.tmall.com/robots.txt": (404, b""),
+            "https://detail.tmall.com/item.htm?id=100": (200, page.encode()),
+        },
+        seen,
+    )
+    result = asyncio.run(
+        collect_listing(runtime, scene_id="double11", url="https://detail.tmall.com/item.htm?id=100")
+    )
+    assert result["list_price"] == "80.00"
+    assert result["availability"] == "instock"
+    assert result["shipping_price"] == "6.00"
+    assert result["seller"] == "虎牌旗艦店"
+    with session_scope(runtime.factory) as session:
+        stored = session.scalar(select(SkuOffer).where(SkuOffer.offer_id == result["offer_id"]))
+        assert stored is not None
+        assert stored.availability == "instock"
+        assert f"{stored.shipping_price:.2f}" == "6.00"
+        assert stored.seller == "虎牌旗艦店"
 
 
 def test_login_wall_and_captcha_store_nothing(runtime):

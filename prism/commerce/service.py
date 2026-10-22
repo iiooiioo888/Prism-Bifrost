@@ -51,6 +51,9 @@ class CommerceService:
         after_sales: Decimal,
         adjustments: list[dict],
         valid_until: str | None = None,
+        availability: str = "unknown",
+        shipping_price: Decimal | None = None,
+        seller: str | None = None,
     ) -> str:
         if price_basis == "logged_in" and list_price is not None:
             raise ComplianceError("不採集登入態價格")
@@ -58,6 +61,8 @@ class CommerceService:
             raise CommerceError("價格基準只能是遊客態或登入態")
         if acquisition_mode not in {"live", "fallback"}:
             raise CommerceError("採集模式只能是 live 或 fallback")
+        if availability not in {"instock", "outofstock", "preorder", "unknown"}:
+            raise CommerceError("庫存標示只能是有貨、缺貨、預售或未標示")
         with session_scope(self.runtime.factory) as session:
             sku = session.scalar(select(Sku).where(Sku.code == sku_code))
             if sku is None:
@@ -80,6 +85,9 @@ class CommerceService:
                 after_sales=str(after_sales),
                 adjustments=adjustments,
                 valid_until=valid_until,
+                availability=availability,
+                shipping_price=None if shipping_price is None else str(shipping_price),
+                seller=seller,
                 created_at=collected_at,
             )
             session.add(offer)
@@ -143,7 +151,7 @@ class CommerceService:
             if sku is None:
                 raise CommerceError(f"場景內沒有此 SKU：{sku_code}")
             rows = session.scalars(select(SkuOffer).where(SkuOffer.sku_id == sku.sku_id)).all()
-            offers = [_offer_input(row) for row in rows]
+            offers = [_offer_input(row) for row in _latest_offers(rows)]
             sku_title = sku.title
             sku_id = sku.sku_id
         days, median = self.baseline_snapshot(sku_code)
@@ -215,7 +223,23 @@ def _offer_input(row: SkuOffer) -> OfferInput:
         adjustments=adjustments,
         acquisition_mode=row.acquisition_mode,
         valid_until=row.valid_until,
+        availability=row.availability or "unknown",
+        shipping_price=None if row.shipping_price is None else unit(row.shipping_price),
     )
+
+
+def _latest_offers(rows: list[SkuOffer]) -> list[SkuOffer]:
+    """同一網址只留最新一筆，避免舊標價和現價一起進排序。"""
+    chosen: dict[str, SkuOffer] = {}
+    for row in rows:
+        current = chosen.get(row.source_url)
+        if current is None or (row.collected_at, row.created_at, row.offer_id) > (
+            current.collected_at,
+            current.created_at,
+            current.offer_id,
+        ):
+            chosen[row.source_url] = row
+    return list(chosen.values())
 
 
 def _adjustment(raw: dict) -> Adjustment:

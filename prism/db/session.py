@@ -41,9 +41,31 @@ def make_engine(database_url: str) -> Engine:
 
 
 _SQLITE_ADDED_COLUMNS = {
-    "product_monitor": ("next_daily_at", "confirm_at"),
-    "product_monitor_hit": ("sku_code", "match_confidence", "match_band"),
+    "product_monitor": (("next_daily_at", "TEXT"), ("confirm_at", "TEXT")),
+    "product_monitor_hit": (
+        ("sku_code", "TEXT"),
+        ("match_confidence", "TEXT"),
+        ("match_band", "TEXT"),
+        ("availability", "TEXT"),
+        ("shipping_price", "TEXT"),
+        ("seller", "TEXT"),
+    ),
+    "sku_offer": (
+        ("availability", "TEXT NOT NULL DEFAULT 'unknown'"),
+        ("shipping_price", "NUMERIC(12,2)"),
+        ("seller", "TEXT"),
+    ),
 }
+
+
+_POSTGRES_ADDED_COLUMNS = (
+    "ALTER TABLE sku_offer ADD COLUMN IF NOT EXISTS availability TEXT NOT NULL DEFAULT 'unknown'",
+    "ALTER TABLE sku_offer ADD COLUMN IF NOT EXISTS shipping_price NUMERIC(12,2)",
+    "ALTER TABLE sku_offer ADD COLUMN IF NOT EXISTS seller TEXT",
+    "ALTER TABLE product_monitor_hit ADD COLUMN IF NOT EXISTS availability TEXT",
+    "ALTER TABLE product_monitor_hit ADD COLUMN IF NOT EXISTS shipping_price TEXT",
+    "ALTER TABLE product_monitor_hit ADD COLUMN IF NOT EXISTS seller TEXT",
+)
 
 
 def init_db(engine: Engine) -> None:
@@ -53,9 +75,13 @@ def init_db(engine: Engine) -> None:
             connection.connection.executescript(_SQLITE_AUDIT_TRIGGER)
             for table, columns in _SQLITE_ADDED_COLUMNS.items():
                 present = {row[1] for row in connection.execute(text(f"PRAGMA table_info({table})"))}
-                for column in columns:
+                for column, column_type in columns:
                     if column not in present:
-                        connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} TEXT"))
+                        connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}"))
+    elif engine.dialect.name == "postgresql":
+        with engine.begin() as connection:
+            for statement in _POSTGRES_ADDED_COLUMNS:
+                connection.execute(text(statement))
 
 
 @contextmanager

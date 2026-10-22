@@ -296,6 +296,9 @@ CREATE TABLE sku_offer (
   after_sales               NUMERIC(6,4) NOT NULL,
   adjustments               JSONB NOT NULL DEFAULT '[]',
   valid_until               TEXT,
+  availability              TEXT NOT NULL DEFAULT 'unknown' CHECK (availability IN ('instock','outofstock','preorder','unknown')),
+  shipping_price            NUMERIC(12,2),
+  seller                    TEXT,
   created_at                TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -362,6 +365,9 @@ CREATE TABLE product_monitor_hit (
   sku_code     TEXT,
   match_confidence TEXT,
   match_band   TEXT,
+  availability TEXT,
+  shipping_price TEXT,
+  seller       TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

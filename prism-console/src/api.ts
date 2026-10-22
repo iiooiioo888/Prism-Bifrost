@@ -221,6 +221,63 @@ export interface MonitorItem {
   sku_code?: string | null;
   match_confidence?: string | null;
   match_band?: "high" | "medium" | "low" | null;
+  availability?: string | null;
+  shipping_price?: string | null;
+  seller?: string | null;
+}
+
+export interface ComparisonRow {
+  platform: string;
+  label: string;
+  source_url: string;
+  title: string;
+  list_price: string;
+  payable: string | null;
+  shipping: string | null;
+  shipping_known: boolean;
+  availability: string;
+  seller: string | null;
+  match_band: string;
+  match_confidence: string;
+  gap: string | null;
+  unit_price: string | null;
+  unit: string | null;
+  baseline: string | null;
+  comparable: boolean;
+  review: boolean;
+  reason: string;
+}
+
+export interface ComparisonGroup {
+  sku_code: string;
+  title: string;
+  comparable_count: number;
+  spread: string | null;
+  low_payable: string | null;
+  low_platform: string | null;
+  statement: string;
+  review: string | null;
+  rows: ComparisonRow[];
+}
+
+export interface RelatedSpecRow {
+  sku_code: string;
+  platform: string;
+  label: string;
+  source_url: string;
+  capacity: string | null;
+  color: string | null;
+  list_price: string;
+  payable: string;
+  unit_price: string | null;
+  unit: string | null;
+  match_band: string;
+}
+
+export interface PriceComparison {
+  note: string;
+  same_identity: ComparisonGroup[];
+  related_specs: Array<{ brand: string; model: string; note: string; rows: RelatedSpecRow[] }>;
 }
 
 export interface PriceDropNotice {
@@ -252,6 +309,7 @@ export interface ProductMonitorReport {
   official?: { configured: boolean; detail: string };
   alerts?: PriceDropNotice[];
   recommendations?: Array<{ label?: string; abstain?: { executable?: Array<{ statement: string }> } }>;
+  comparison?: PriceComparison;
   platforms: MonitorPlatform[];
 }
 
@@ -272,6 +330,9 @@ export interface ProductListing {
   source_url: string;
   list_price: string | null;
   price_basis: "guest" | "logged_in";
+  availability?: string;
+  shipping_price?: string | null;
+  seller?: string | null;
   match_confidence: string;
   stored: boolean;
   event_created: boolean;
@@ -300,6 +361,7 @@ export interface RankedOffer {
   source_url: string;
   list_price: string;
   payable: string;
+  shipping?: string | null;
   score: string;
   match_band: string;
   match_cap: string;
