@@ -56,6 +56,12 @@ export const api = {
   proxies: () => request<ProxyPoolStatus>("/api/v1/health/proxies"),
   scenes: () => request<{ items: SceneConfig[] }>("/api/v1/scenes"),
   marketplaces: () => request<{ items: Marketplace[] }>("/api/v1/marketplaces"),
+  languageModel: () => request<LanguageModelStatus>("/api/v1/llm"),
+  explainScene: (sceneId: string, skuCode: string) =>
+    request<ModelExplanation>(`/api/v1/scenes/${encodeURIComponent(sceneId)}/explain`, {
+      method: "POST",
+      body: JSON.stringify({ sku_code: skuCode }),
+    }),
   readListing: (sceneId: string, url: string) =>
     request<ProductListing>(`/api/v1/scenes/${encodeURIComponent(sceneId)}/listings`, {
       method: "POST",
@@ -311,6 +317,26 @@ export interface ProductMonitorReport {
   recommendations?: Array<{ label?: string; abstain?: { executable?: Array<{ statement: string }> } }>;
   comparison?: PriceComparison;
   platforms: MonitorPlatform[];
+}
+
+export interface LanguageModelStatus {
+  configured: boolean;
+  provider: string;
+  model: string | null;
+  detail: string;
+}
+
+export interface ModelExplanation {
+  configured: boolean;
+  provider: string;
+  model: string | null;
+  status: string;
+  label: string;
+  explanation: string | null;
+  drivers: string[];
+  unsupported: boolean;
+  detail: string;
+  event_created: boolean;
 }
 
 export interface Marketplace {

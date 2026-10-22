@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from prism.api.deps import Principal, principal_from_request, require_role
 from prism.commerce.marketplaces import ListingError, collect_listing, marketplace_catalog
+from prism.llm.assist import explain_decision, external_report
 from prism.commerce.monitor import monitor_product
 from prism.commerce.schedule import run_due
 from prism.commerce.service import CommerceError, CommerceService
@@ -32,9 +33,30 @@ class MonitorBody(BaseModel):
     query: str = Field(min_length=1, max_length=80)
 
 
+class ExplainBody(BaseModel):
+    sku_code: str = Field(min_length=1, max_length=80)
+
+
 def register_scene_routes(application: FastAPI) -> None:
     def runtime_of(request: Request) -> PrismRuntime:
         return request.app.state.runtime
+
+    @application.get("/api/v1/llm")
+    def language_model_status(request: Request, principal: Principal = Depends(principal_from_request)) -> dict:
+        require_role(principal, "viewer")
+        return external_report(runtime_of(request))
+
+    @application.post("/api/v1/scenes/{scene_id}/explain")
+    def explain_scene(
+        scene_id: str,
+        body: ExplainBody,
+        request: Request,
+        principal: Principal = Depends(principal_from_request),
+    ) -> dict:
+        require_role(principal, "analyst")
+        if scene_id not in runtime_of(request).settings.scenes:
+            raise HTTPException(status_code=404, detail="沒有這個場景")
+        return explain_decision(runtime_of(request), scene_id=scene_id, sku_code=body.sku_code)
 
     @application.get("/api/v1/marketplaces")
     def list_marketplaces(principal: Principal = Depends(principal_from_request)) -> dict:
